@@ -1,0 +1,4 @@
+.env
+.ai-harness/
+node_modules/
+npm-debug.log*
