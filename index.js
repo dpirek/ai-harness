@@ -12,6 +12,8 @@ import { createTools } from "./lib/tools.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 loadEnv(path.join(__dirname, ".env"));
 
+// Keep terminal color support local to the CLI so the agent and tools stay
+// reusable in tests or other frontends.
 const colors = stdout.isTTY && !process.env.NO_COLOR
   ? {
       reset: "\x1b[0m",
@@ -39,6 +41,8 @@ Flags:
 `);
 }
 
+// The parser intentionally handles only a tiny set of flags. That makes startup
+// predictable and avoids pulling in a command-line dependency.
 function parseArgs(argv) {
   const result = { approveAll: false, model: null, prompt: null, help: false };
   for (let i = 0; i < argv.length; i += 1) {
@@ -66,6 +70,10 @@ async function main() {
 
   const root = process.cwd();
   const rl = readline.createInterface({ input: stdin, output: stdout });
+
+  // Tool calls that mutate state are routed through this callback. In
+  // interactive mode it asks the user; in one-shot non-TTY mode it denies unless
+  // --yes was provided.
   const approve = async (description) => {
     if (args.approveAll) return true;
     if (!stdin.isTTY) return false;
@@ -79,6 +87,9 @@ async function main() {
     apiKey,
     baseUrl: process.env.OPENAI_BASE_URL,
   });
+
+  // The agent owns the model conversation. The tools own local workspace
+  // effects, so the CLI can stay focused on input/output and approval prompts.
   const tools = createTools({ root, approve });
   const agent = new CodingAgent({
     client,
@@ -94,11 +105,15 @@ async function main() {
   });
 
   const runPrompt = async (prompt) => {
+    // One prompt may require multiple model/tool turns; agent.run hides that
+    // loop behind a simple terminal interaction.
     stdout.write(`${colors.dim}thinking...${colors.reset}\n`);
     const answer = await agent.run(prompt);
     stdout.write(`\n${answer}\n\n`);
   };
 
+  // If --prompt is provided, run exactly one task and exit. Otherwise drop into
+  // a small REPL with slash commands handled locally.
   if (args.prompt) {
     await runPrompt(args.prompt);
     rl.close();
