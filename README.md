@@ -46,6 +46,41 @@ By default, the harness asks before writing files or executing commands. Reads a
 searches are allowed automatically. All tool paths are restricted to the directory
 where the harness was launched.
 
+## MCP servers
+
+The harness can expose remote MCP servers to the Responses API. Add
+`.ai-harness/config.toml` in the workspace:
+
+```toml
+[[mcp.servers]]
+server_label = "docs"
+server_url = "https://example.com/mcp"
+allowed_tools = ["search"]
+require_approval = "always"
+
+[mcp.servers.headers]
+Authorization = "Bearer ${MCP_TOKEN}"
+```
+
+Each MCP server must set exactly one of `server_url` or `connector_id`. Built-in
+connector IDs such as `connector_gmail` are supported when you provide an OAuth
+token in `authorization`. `${ENV_VAR}` placeholders are expanded from the
+environment. You can also set `AI_HARNESS_MCP_SERVERS` to JSON containing either
+`mcp.servers` or `servers`.
+
+Local stdio MCP servers can use Codex-style config:
+
+```toml
+[mcp_servers.ou_znamky]
+command = "node"
+args = ["/path/to/server.js"]
+cwd = "/path/to/server"
+message_format = "content-length" # or "json-lines"
+```
+
+MCP tool calls require approval by default. Set `require_approval` to `"never"`
+only for MCP servers and tools you trust.
+
 ## Test
 
 ```sh

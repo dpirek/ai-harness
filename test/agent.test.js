@@ -63,3 +63,71 @@ test("agent executes a function call and returns final text", async () => {
     output: '{"ok":true,"value":"hello"}',
   }]);
 });
+
+test("agent passes MCP tool definitions through to the API", async () => {
+  const requests = [];
+  const client = {
+    async createResponse(body) {
+      requests.push(body);
+      return { id: "resp_1", output_text: "Done." };
+    },
+  };
+  const mcpTool = {
+    type: "mcp",
+    server_label: "docs",
+    server_url: "https://example.com/mcp",
+    require_approval: "always",
+  };
+  const agent = new CodingAgent({
+    client,
+    tools: [mcpTool],
+    model: "test-model",
+    root: "/workspace",
+  });
+
+  assert.equal(await agent.run("use docs"), "Done.");
+  assert.deepEqual(requests[0].tools, [mcpTool]);
+});
+
+test("agent answers MCP approval requests", async () => {
+  const requests = [];
+  const approvals = [];
+  const responses = [
+    {
+      id: "resp_1",
+      output: [{
+        type: "mcp_approval_request",
+        id: "approval_1",
+        server_label: "docs",
+        name: "search",
+        arguments: '{"query":"hello"}',
+      }],
+    },
+    { id: "resp_2", output_text: "Approved." },
+  ];
+  const client = {
+    async createResponse(body) {
+      requests.push(body);
+      return responses.shift();
+    },
+  };
+  const agent = new CodingAgent({
+    client,
+    tools: [],
+    model: "test-model",
+    root: "/workspace",
+    async approve(description) {
+      approvals.push(description);
+      return true;
+    },
+  });
+
+  assert.equal(await agent.run("search docs"), "Approved.");
+  assert.equal(approvals[0], 'MCP docs.search {"query":"hello"}');
+  assert.deepEqual(requests[1].input, [{
+    type: "mcp_approval_response",
+    approval_request_id: "approval_1",
+    approve: true,
+    reason: "Approved by user.",
+  }]);
+});

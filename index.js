@@ -8,6 +8,7 @@ import { loadEnv } from "./lib/env.js";
 import { OpenAIClient } from "./lib/openai.js";
 import { CodingAgent } from "./lib/agent.js";
 import { createTools } from "./lib/tools.js";
+import { loadMcpTools } from "./lib/mcp.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 loadEnv(path.join(__dirname, ".env"));
@@ -90,14 +91,21 @@ async function main() {
 
   // The agent owns the model conversation. The tools own local workspace
   // effects, so the CLI can stay focused on input/output and approval prompts.
-  const tools = createTools({ root, approve });
+  const localTools = createTools({ root, approve });
+  const mcpTools = await loadMcpTools({ root, approve });
+  const tools = [...localTools, ...mcpTools];
   const agent = new CodingAgent({
     client,
     tools,
     model: args.model || process.env.OPENAI_MODEL || "gpt-5.1-codex",
     root,
+    approve,
     onTool: ({ name, args: toolArgs }) => {
-      const detail = toolArgs.path || toolArgs.command || "";
+      const detail = toolArgs.path ||
+        toolArgs.command ||
+        (toolArgs.server_label && toolArgs.tool
+          ? `${toolArgs.server_label}.${toolArgs.tool}`
+          : "");
       stdout.write(
         `${colors.dim}tool: ${name}${detail ? ` (${detail})` : ""}${colors.reset}\n`,
       );
@@ -139,7 +147,12 @@ async function main() {
       continue;
     }
     if (input === "/status") {
-      stdout.write(`model: ${agent.model}\nroot: ${root}\napprove all: ${args.approveAll}\n`);
+      stdout.write(
+        `model: ${agent.model}\n` +
+        `root: ${root}\n` +
+        `approve all: ${args.approveAll}\n` +
+        `mcp tools: ${mcpTools.length}\n`,
+      );
       continue;
     }
     if (input.startsWith("/model ")) {
