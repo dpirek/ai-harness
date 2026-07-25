@@ -88,11 +88,14 @@ async function main() {
     apiKey,
     baseUrl: process.env.OPENAI_BASE_URL,
   });
+  const printInfo = (message) => {
+    stdout.write(`${colors.dim}info: ${message}${colors.reset}\n`);
+  };
 
   // The agent owns the model conversation. The tools own local workspace
   // effects, so the CLI can stay focused on input/output and approval prompts.
   const localTools = createTools({ root, approve });
-  const mcpTools = await loadMcpTools({ root, approve });
+  const mcpTools = await loadMcpTools({ root, approve, onInfo: printInfo });
   const tools = [...localTools, ...mcpTools];
   const agent = new CodingAgent({
     client,
@@ -100,6 +103,7 @@ async function main() {
     model: args.model || process.env.OPENAI_MODEL || "gpt-5.1-codex",
     root,
     approve,
+    onInfo: printInfo,
     onTool: ({ name, args: toolArgs }) => {
       const detail = toolArgs.path ||
         toolArgs.command ||

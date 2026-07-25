@@ -131,3 +131,32 @@ test("agent answers MCP approval requests", async () => {
     reason: "Approved by user.",
   }]);
 });
+
+test("agent reports MCP calls returned by the API", async () => {
+  const messages = [];
+  const client = {
+    async createResponse() {
+      return {
+        id: "resp_1",
+        output: [{
+          type: "mcp_call",
+          server_label: "docs",
+          name: "search",
+        }],
+        output_text: "Done.",
+      };
+    },
+  };
+  const agent = new CodingAgent({
+    client,
+    tools: [],
+    model: "test-model",
+    root: "/workspace",
+    onInfo(message) {
+      messages.push(message);
+    },
+  });
+
+  assert.equal(await agent.run("search docs"), "Done.");
+  assert.deepEqual(messages, ["Using MCP server docs.search."]);
+});

@@ -165,7 +165,14 @@ require_approval = "never"
 `,
   );
 
-  const tools = await loadMcpTools({ root, env: {} });
+  const messages = [];
+  const tools = await loadMcpTools({
+    root,
+    env: {},
+    onInfo(message) {
+      messages.push(message);
+    },
+  });
 
   assert.equal(tools.length, 1);
   assert.equal(tools[0].name, "mock__lookup");
@@ -173,6 +180,12 @@ require_approval = "never"
   assert.deepEqual(await tools[0].execute({ id: "42" }), {
     content: [{ type: "text", text: "value:42" }],
   });
+  assert.deepEqual(messages, [
+    "Connecting MCP server mock.",
+    "Connected MCP server mock.",
+    "Loading tools from MCP server mock.",
+    "Using MCP server mock.lookup.",
+  ]);
 });
 
 test("treats empty workspace config as no MCP servers", async () => {
