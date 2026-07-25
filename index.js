@@ -57,6 +57,28 @@ function parseArgs(argv) {
   return result;
 }
 
+function suppressStartupInput(input) {
+  if (!input.isTTY || typeof input.setRawMode !== "function") return () => {};
+
+  const wasRaw = input.isRaw === true;
+  const discard = (chunk) => {
+    if (chunk.includes(3)) {
+      restore();
+      process.kill(process.pid, "SIGINT");
+    }
+  };
+  const restore = () => {
+    input.off("data", discard);
+    if (!wasRaw) input.setRawMode(false);
+    input.pause();
+  };
+
+  input.setRawMode(true);
+  input.resume();
+  input.on("data", discard);
+  return restore;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
@@ -70,14 +92,14 @@ async function main() {
   }
 
   const root = process.cwd();
-  const rl = readline.createInterface({ input: stdin, output: stdout });
+  let rl = null;
 
   // Tool calls that mutate state are routed through this callback. In
   // interactive mode it asks the user; in one-shot non-TTY mode it denies unless
   // --yes was provided.
   const approve = async (description) => {
     if (args.approveAll) return true;
-    if (!stdin.isTTY) return false;
+    if (!stdin.isTTY || !rl) return false;
     const answer = await rl.question(
       `${colors.cyan}?${colors.reset} Approve ${description}? [y/N] `,
     );
@@ -95,7 +117,14 @@ async function main() {
   // The agent owns the model conversation. The tools own local workspace
   // effects, so the CLI can stay focused on input/output and approval prompts.
   const localTools = createTools({ root, approve });
-  const mcpTools = await loadMcpTools({ root, approve, onInfo: printInfo });
+  const restoreStartupInput = args.prompt ? () => {} : suppressStartupInput(stdin);
+  let mcpTools;
+  try {
+    mcpTools = await loadMcpTools({ root, approve, onInfo: printInfo });
+  } finally {
+    restoreStartupInput();
+  }
+  rl = readline.createInterface({ input: stdin, output: stdout });
   const tools = [...localTools, ...mcpTools];
   const agent = new CodingAgent({
     client,

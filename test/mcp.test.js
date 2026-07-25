@@ -118,6 +118,41 @@ authorization = "\${DRIVE_TOKEN}"
   }]);
 });
 
+test("uses global MCP auto approval as the default", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "ai-harness-mcp-"));
+  await fs.mkdir(path.join(root, ".ai-harness"));
+  await fs.writeFile(
+    path.join(root, ".ai-harness/config.toml"),
+    `
+[mcp]
+auto_approve = true
+
+[[mcp.servers]]
+server_label = "docs"
+server_url = "https://example.com/mcp"
+
+[[mcp.servers]]
+server_label = "payments"
+server_url = "https://example.com/payments"
+require_approval = "always"
+`,
+  );
+
+  const tools = await loadMcpTools({ root, env: {} });
+
+  assert.deepEqual(tools, [{
+    type: "mcp",
+    server_label: "docs",
+    server_url: "https://example.com/mcp",
+    require_approval: "never",
+  }, {
+    type: "mcp",
+    server_label: "payments",
+    server_url: "https://example.com/payments",
+    require_approval: "always",
+  }]);
+});
+
 test("loads local stdio MCP servers from Codex-style workspace config", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "ai-harness-mcp-"));
   await fs.mkdir(path.join(root, ".ai-harness"));
@@ -158,17 +193,24 @@ process.stdin.on("data", (chunk) => {
   await fs.writeFile(
     path.join(root, ".ai-harness/config.toml"),
     `
+[mcp]
+auto_approve = true
+
 [mcp_servers.mock]
 command = "${process.execPath}"
 args = ["${serverPath}"]
-require_approval = "never"
 `,
   );
 
   const messages = [];
+  let approvalRequests = 0;
   const tools = await loadMcpTools({
     root,
     env: {},
+    approve: async () => {
+      approvalRequests += 1;
+      return false;
+    },
     onInfo(message) {
       messages.push(message);
     },
@@ -180,6 +222,7 @@ require_approval = "never"
   assert.deepEqual(await tools[0].execute({ id: "42" }), {
     content: [{ type: "text", text: "value:42" }],
   });
+  assert.equal(approvalRequests, 0);
   assert.deepEqual(messages, [
     "Connecting MCP server mock.",
     "Connected MCP server mock.",
@@ -217,5 +260,22 @@ test("rejects invalid MCP server targets", async () => {
       },
     }),
     /exactly one of server_url or connector_id/,
+  );
+});
+
+test("rejects invalid global MCP auto approval config", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "ai-harness-mcp-"));
+  await fs.mkdir(path.join(root, ".ai-harness"));
+  await fs.writeFile(
+    path.join(root, ".ai-harness/config.toml"),
+    `
+[mcp]
+auto_approve = "yes"
+`,
+  );
+
+  await assert.rejects(
+    () => loadMcpTools({ root, env: {} }),
+    /mcp\.auto_approve.*must be a boolean/,
   );
 });

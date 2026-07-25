@@ -52,11 +52,14 @@ The harness can expose remote MCP servers to the Responses API. Add
 `.ai-harness/config.toml` in the workspace:
 
 ```toml
+[mcp]
+auto_approve = true # optional: default MCP calls to require_approval = "never"
+
 [[mcp.servers]]
 server_label = "docs"
 server_url = "https://example.com/mcp"
 allowed_tools = ["search"]
-require_approval = "always"
+require_approval = "always" # optional per-server override
 
 [mcp.servers.headers]
 Authorization = "Bearer ${MCP_TOKEN}"
@@ -78,8 +81,9 @@ cwd = "/path/to/server"
 message_format = "content-length" # or "json-lines"
 ```
 
-MCP tool calls require approval by default. Set `require_approval` to `"never"`
-only for MCP servers and tools you trust.
+MCP tool calls require approval by default. Set `[mcp] auto_approve = true` to
+default MCP servers to `require_approval = "never"`, or set `require_approval`
+per server. Auto-approve only MCP servers and tools you trust.
 
 ## Test
 
