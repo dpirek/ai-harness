@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CodingAgent, extractText } from "../lib/agent.js";
+import { CodingAgent, extractText, promptContent } from "../lib/agent.js";
 import { OllamaClient, OpenAIClient } from "../lib/openai.js";
 
 test("extractText reads message output", () => {
@@ -181,10 +181,20 @@ test("agent emits run events for web streaming", async () => {
 
   assert.equal(await agent.run("hello"), "Done.");
   assert.deepEqual(events, [
-    { type: "start", prompt: "hello" },
+    { type: "start", prompt: "hello", images: 0 },
     { type: "turn", turn: 1 },
     { type: "response", id: "resp_1" },
     { type: "final", text: "Done." },
+  ]);
+});
+
+test("promptContent includes image inputs", () => {
+  assert.deepEqual(promptContent({
+    text: "describe this",
+    images: [{ dataUrl: "data:image/png;base64,abc" }],
+  }), [
+    { type: "input_text", text: "describe this" },
+    { type: "input_image", image_url: "data:image/png;base64,abc" },
   ]);
 });
 
@@ -384,4 +394,45 @@ test("ollama client streams chat response text deltas", async () => {
 
   assert.deepEqual(deltas, ["Hel", "lo"]);
   assert.equal(response.output_text, "Hello");
+});
+
+test("ollama client sends images as base64 chat message images", async () => {
+  const requests = [];
+  const client = new OllamaClient({
+    baseUrl: "http://ollama.test",
+    async fetchImpl(url, options) {
+      requests.push({ url, body: JSON.parse(options.body) });
+      return {
+        ok: true,
+        status: 200,
+        async text() {
+          return JSON.stringify({
+            message: {
+              role: "assistant",
+              content: "The image shows a chart.",
+            },
+          });
+        },
+      };
+    },
+  });
+
+  await client.createResponse({
+    model: "llava",
+    instructions: "Analyze images.",
+    input: [{
+      role: "user",
+      content: [
+        { type: "input_text", text: "what is this?" },
+        { type: "input_image", image_url: "data:image/png;base64,aW1n" },
+      ],
+    }],
+    tools: [],
+  });
+
+  assert.deepEqual(requests[0].body.messages[1], {
+    role: "user",
+    content: "what is this?",
+    images: ["aW1n"],
+  });
 });

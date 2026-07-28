@@ -28,6 +28,7 @@ const CONTENT_TYPES = {
 };
 
 const WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+const MAX_WEBSOCKET_TEXT_BYTES = 40 * 1024 * 1024;
 const providerSettings = new Map();
 
 function json(res, status, payload) {
@@ -171,6 +172,7 @@ function decodeFrames(buffer) {
   while (offset + 2 <= buffer.length) {
     const first = buffer[offset];
     const second = buffer[offset + 1];
+    const fin = (first & 0x80) !== 0;
     const opcode = first & 0x0f;
     const masked = (second & 0x80) !== 0;
     let length = second & 0x7f;
@@ -204,7 +206,8 @@ function decodeFrames(buffer) {
 
     if (opcode === 0x8) messages.push({ type: "close" });
     else if (opcode === 0x9) messages.push({ type: "ping", payload });
-    else if (opcode === 0x1) messages.push({ type: "text", text: payload.toString("utf8") });
+    else if (opcode === 0x1) messages.push({ type: "text", payload, fin });
+    else if (opcode === 0x0) messages.push({ type: "continuation", payload, fin });
   }
 
   return { messages, remaining: buffer.subarray(offset) };
@@ -234,6 +237,22 @@ ${transcript}
 
 Current user message:
 ${prompt}`;
+}
+
+function requestImages(payload) {
+  if (!Array.isArray(payload.images)) return [];
+  return payload.images
+    .filter((image) => (
+      image &&
+      typeof image.dataUrl === "string" &&
+      image.dataUrl.startsWith("data:image/")
+    ))
+    .slice(0, 4)
+    .map((image) => ({
+      name: typeof image.name === "string" ? image.name.slice(0, 200) : "image",
+      type: typeof image.type === "string" ? image.type.slice(0, 100) : "image/*",
+      dataUrl: image.dataUrl,
+    }));
 }
 
 async function createAgentSession(socket, sessionId, streamStates) {
@@ -307,6 +326,7 @@ function handleWebSocket(socket, req) {
   );
 
   let frameBuffer = Buffer.alloc(0);
+  let textFragments = [];
   const agentPromises = new Map();
   const streamStates = new Map();
   let running = false;
@@ -326,22 +346,48 @@ function handleWebSocket(socket, req) {
           socket.write(Buffer.concat([Buffer.from([0x8a, message.payload.length]), message.payload]));
           continue;
         }
-        if (message.type !== "text") continue;
+        let text;
+        if (message.type === "text") {
+          if (!message.fin) {
+            textFragments = [message.payload];
+            continue;
+          }
+          text = message.payload.toString("utf8");
+        } else if (message.type === "continuation") {
+          textFragments.push(message.payload);
+          const totalBytes = textFragments.reduce((total, fragment) => total + fragment.length, 0);
+          if (totalBytes > MAX_WEBSOCKET_TEXT_BYTES) {
+            throw new Error("WebSocket message is too large.");
+          }
+          if (!message.fin) continue;
+          text = Buffer.concat(textFragments).toString("utf8");
+          textFragments = [];
+        } else {
+          continue;
+        }
 
-        const payload = JSON.parse(message.text);
+        const payload = JSON.parse(text);
         const sessionId = typeof payload.sessionId === "string" && payload.sessionId
           ? payload.sessionId.slice(0, 120)
           : "default";
         if (payload.type === "provider_settings") {
           const provider = payload.provider === "ollama" ? "ollama" : "openai";
+          const model = typeof payload.model === "string" ? payload.model.trim() : "";
+          const baseUrl = typeof payload.baseUrl === "string" ? payload.baseUrl.trim() : "";
           providerSettings.set(socket, {
             provider,
-            model: typeof payload.model === "string" ? payload.model.trim() : "",
-            baseUrl: typeof payload.baseUrl === "string" ? payload.baseUrl.trim() : "",
+            model,
+            baseUrl,
           });
           agentPromises.clear();
           streamStates.clear();
-          sendJson(socket, { type: "provider_settings", ok: true, provider });
+          sendJson(socket, {
+            type: "provider_settings",
+            ok: true,
+            provider,
+            model: model || (provider === "ollama" ? "llama3.1" : "gpt-5.1-codex"),
+            baseUrl: baseUrl || (provider === "ollama" ? "http://localhost:11434" : ""),
+          });
           continue;
         }
         if (payload.type === "reload_tools") {
@@ -376,7 +422,10 @@ function handleWebSocket(socket, req) {
             ? payload.prompt
             : promptWithHistory(payload.prompt, payload.history);
           streamStates.set(sessionId, { started: false });
-          const text = await agent.run(prompt);
+          const text = await agent.run({
+            text: prompt,
+            images: requestImages(payload),
+          });
           sendJson(socket, { type: "done", text, sessionId });
           streamStates.delete(sessionId);
         } catch (error) {

@@ -68,6 +68,9 @@
         <footer class="composerWrap">
           <p class="notice">AI Harness can make mistakes. Check important changes.</p>
           <form id="promptForm" class="composer">
+            <div id="imagePreviewList" class="imagePreviewList" aria-live="polite"></div>
+            <input id="imageInput" type="file" accept="image/*" multiple hidden>
+            <button id="addImageButton" class="composerIcon" type="button" aria-label="Add image" title="Add image">＋</button>
             <textarea
               id="promptInput"
               name="prompt"

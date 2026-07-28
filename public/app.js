@@ -5,6 +5,9 @@ const eventList = document.querySelector("#eventList");
 const promptForm = document.querySelector("#promptForm");
 const promptInput = document.querySelector("#promptInput");
 const sendButton = document.querySelector("#sendButton");
+const addImageButton = document.querySelector("#addImageButton");
+const imageInput = document.querySelector("#imageInput");
+const imagePreviewList = document.querySelector("#imagePreviewList");
 const resetButton = document.querySelector("#resetButton");
 const clearEventsButton = document.querySelector("#clearEventsButton");
 const emptyState = document.querySelector("#emptyState");
@@ -48,12 +51,14 @@ let pendingSessionId = null;
 let promptHistoryIndex = null;
 let promptHistoryDraft = "";
 let streamingAnswer = null;
+let attachedImages = [];
 
 const STORAGE_KEY = "ai-harness.sessions";
 const SIDEBAR_STORAGE_KEY = "ai-harness.sidebarCollapsed";
 const STREAM_WIDTH_STORAGE_KEY = "ai-harness.streamWidth";
 const PROVIDER_STORAGE_KEY = "ai-harness.providerSettings";
 const MIN_STREAM_WIDTH = 260;
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const CONFIG_TEMPLATES = {
   remote: `
 [[mcp.servers]]
@@ -219,10 +224,10 @@ function navigatePromptHistory(direction) {
   return true;
 }
 
-function addMessageToSession(sessionId, role, text) {
+function addMessageToSession(sessionId, role, text, images = []) {
   const session = sessions.find((candidate) => candidate.id === sessionId);
   if (!session) return;
-  session.messages.push({ role, text });
+  session.messages.push({ role, text, images });
   if (role === "user" && session.messages.length === 1) {
     session.title = titleFromPrompt(text);
   }
@@ -233,6 +238,54 @@ function addMessageToSession(sessionId, role, text) {
   ];
   saveSessions();
   renderRecents();
+}
+
+function renderImagePreviews() {
+  imagePreviewList.replaceChildren();
+  attachedImages.forEach((image, index) => {
+    const item = document.createElement("div");
+    item.className = "imagePreview";
+    const img = document.createElement("img");
+    img.src = image.dataUrl;
+    img.alt = image.name;
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.ariaLabel = `Remove ${image.name}`;
+    remove.textContent = "×";
+    remove.addEventListener("click", () => {
+      attachedImages.splice(index, 1);
+      renderImagePreviews();
+      promptInput.focus();
+    });
+    item.append(img, remove);
+    imagePreviewList.append(item);
+  });
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(reader.result));
+    reader.addEventListener("error", () => reject(reader.error));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function addImages(files) {
+  for (const file of files) {
+    if (!file.type.startsWith("image/")) continue;
+    if (file.size > MAX_IMAGE_BYTES) {
+      addEvent("Image skipped", `${file.name} is larger than 8 MB`);
+      continue;
+    }
+    attachedImages.push({
+      name: file.name,
+      type: file.type,
+      dataUrl: await readFileAsDataUrl(file),
+    });
+  }
+  renderImagePreviews();
+  promptInput.focus();
 }
 
 function resizePromptInput() {
@@ -256,10 +309,22 @@ function scrollToEnd(element) {
   element.scrollTop = element.scrollHeight;
 }
 
-function renderMessage(role, text) {
+function renderMessage(role, text, images = []) {
   emptyState?.remove();
   const article = document.createElement("article");
   article.className = `message message-${role}`;
+
+  if (images.length > 0) {
+    const gallery = document.createElement("div");
+    gallery.className = "messageImages";
+    for (const image of images) {
+      const img = document.createElement("img");
+      img.src = image.dataUrl;
+      img.alt = image.name || "Attached image";
+      gallery.append(img);
+    }
+    article.append(gallery);
+  }
 
   const body = document.createElement("p");
   body.textContent = text;
@@ -324,7 +389,7 @@ function renderMessages() {
     return;
   }
   for (const message of session.messages) {
-    renderMessage(message.role, message.text);
+    renderMessage(message.role, message.text, message.images || []);
   }
 }
 
@@ -740,9 +805,18 @@ function connect() {
   socket.addEventListener("message", (event) => {
     const payload = JSON.parse(event.data);
     if (payload.type === "ready") {
-      addEvent("Agent session ready", {
+      addEvent("Server defaults", {
+        provider: payload.provider,
         model: payload.model,
         approveAll: payload.approveAll,
+      });
+      return;
+    }
+    if (payload.type === "provider_settings") {
+      addEvent("Agent session ready", {
+        provider: payload.provider,
+        model: payload.model,
+        baseUrl: payload.baseUrl,
       });
       return;
     }
@@ -803,19 +877,37 @@ function connect() {
 promptForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const prompt = promptInput.value.trim();
-  if (!prompt || runActive) return;
+  if ((!prompt && attachedImages.length === 0) || runActive) return;
   const sessionId = activeSessionId;
   const session = activeSession();
   const history = session ? session.messages.slice(-20) : [];
-  addMessageToSession(sessionId, "user", prompt);
+  const images = attachedImages;
+  const displayPrompt = prompt || "Analyze attached image";
+  addMessageToSession(
+    sessionId,
+    "user",
+    displayPrompt,
+    images,
+  );
   renderMessages();
-  addEvent("Prompt sent", prompt);
+  addEvent("Prompt sent", images.length > 0 ? `${displayPrompt} (${images.length} image)` : displayPrompt);
   promptInput.value = "";
+  attachedImages = [];
+  renderImagePreviews();
   resetPromptHistoryCursor();
   resizePromptInput();
   setBusy(true);
   pendingSessionId = sessionId;
-  send({ type: "prompt", prompt, sessionId, history });
+  send({ type: "prompt", prompt: displayPrompt, sessionId, history, images });
+});
+
+addImageButton.addEventListener("click", () => {
+  imageInput.click();
+});
+
+imageInput.addEventListener("change", async () => {
+  await addImages(Array.from(imageInput.files || []));
+  imageInput.value = "";
 });
 
 promptInput.addEventListener("input", () => {
