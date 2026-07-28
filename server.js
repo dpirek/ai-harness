@@ -24,6 +24,7 @@ const CONTENT_TYPES = {
   ".ico": "image/x-icon",
   ".js": "text/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  ".png": "image/png",
   ".svg": "image/svg+xml; charset=utf-8",
 };
 
@@ -162,7 +163,7 @@ function resolvePublicPath(urlPath) {
 async function serveStatic(req, res) {
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
   if (url.pathname === "/favicon.ico") {
-    res.writeHead(302, { location: "/favicon.svg" });
+    res.writeHead(302, { location: "/logo.png" });
     res.end();
     return;
   }

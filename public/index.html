@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>AI Harness</title>
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="/logo.png" type="image/png">
     <link rel="stylesheet" href="/styles.css">
     <script type="module" src="/app.js"></script>
   </head>
@@ -12,7 +12,10 @@
     <div id="appShell" class="app">
       <aside class="sidebar" aria-label="Conversation navigation">
         <header class="sidebarTop">
-          <div class="brand">AI <span>Harness</span></div>
+          <div class="brand">
+            <img src="/logo.png" alt="" aria-hidden="true">
+            <span>Harness</span>
+          </div>
           <button
             id="sidebarToggleButton"
             class="sidebarToggle"
@@ -48,7 +51,7 @@
         </section>
 
         <footer class="account">
-          <span class="avatar"></span>
+          <span class="avatar"><img src="/logo.png" alt="" aria-hidden="true"></span>
           <div class="accountMeta">
             <strong>User Name</strong>
             <span id="workspaceMeta">Connecting...</span>
