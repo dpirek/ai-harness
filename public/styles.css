@@ -128,7 +128,6 @@ code {
 
 .sidebarActions,
 .chatActions,
-.messageActions,
 .streamHeader {
   display: flex;
   align-items: center;
@@ -151,7 +150,7 @@ code {
 .iconButton:hover,
 .composerIcon:hover,
 .modeButton:hover,
-.messageActions button:hover {
+.textButton:hover {
   background: var(--surface-hover);
 }
 
@@ -418,10 +417,6 @@ code {
   font-weight: 700;
 }
 
-.textButton:hover {
-  background: var(--surface-hover);
-}
-
 .messages {
   flex: 1;
   min-height: 0;
@@ -502,20 +497,6 @@ code {
   50% {
     opacity: 0;
   }
-}
-
-.messageActions {
-  margin-top: 18px;
-}
-
-.messageActions button {
-  display: inline-grid;
-  width: 28px;
-  height: 28px;
-  place-items: center;
-  border-radius: 6px;
-  color: #b9b9b9;
-  font-size: 1.02rem;
 }
 
 .composerWrap {

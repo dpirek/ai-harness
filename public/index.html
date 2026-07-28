@@ -34,7 +34,10 @@
             <span class="navIcon">⚙</span><span class="navLabel">Settings</span>
           </button>
           <button id="toolsButton" type="button" title="Tools">
-            <span class="navIcon">▣</span><span class="navLabel">Tools</span>
+            <span class="navIcon">⚒</span><span class="navLabel">Tools</span>
+          </button>
+          <button id="mcpButton" type="button" title="MCP configuration">
+            <span class="navIcon">⛓</span><span class="navLabel">MCP configuration</span>
           </button>
           <!--
           <button type="button"><span class="navIcon">◎</span>Plugins</button>
@@ -113,7 +116,7 @@
           <header class="settingsHeader">
             <div>
               <h2>Settings</h2>
-              <p>Configure provider and <code>.ai-harness/config.toml</code></p>
+              <p>Configure provider and model defaults</p>
             </div>
             <button id="closeSettingsButton" class="iconButton" type="button" aria-label="Close settings">×</button>
           </header>
@@ -144,6 +147,25 @@
               <span id="providerModelsStatus">Models not loaded</span>
             </div>
           </section>
+
+          <footer class="settingsFooter">
+            <span id="settingsStatus" class="configStatus">Provider settings are stored in this browser.</span>
+            <div>
+              <button id="saveSettingsButton" class="primaryButton" type="submit">Save</button>
+            </div>
+          </footer>
+        </form>
+      </dialog>
+
+      <dialog id="toolsDialog" class="settingsDialog">
+        <form id="toolsForm" class="settingsPanel" method="dialog">
+          <header class="settingsHeader">
+            <div>
+              <h2>Tools</h2>
+              <p>Choose which built-in workspace tools the model can call</p>
+            </div>
+            <button id="closeToolsButton" class="iconButton" type="button" aria-label="Close tools">×</button>
+          </header>
 
           <section class="toolPermissions" aria-label="Local tool permissions">
             <div class="toolPermissionsHeader">
@@ -176,37 +198,23 @@
             </label>
           </section>
 
-          <div class="settingsTemplates" aria-label="Config templates">
-            <button id="remoteTemplateButton" type="button">Remote MCP</button>
-            <button id="stdioTemplateButton" type="button">Local stdio MCP</button>
-            <button id="autoApproveTemplateButton" type="button">Auto approve MCP</button>
-          </div>
-
-          <textarea
-            id="configInput"
-            class="configInput"
-            spellcheck="false"
-            placeholder="# .ai-harness/config.toml"
-          ></textarea>
-
           <footer class="settingsFooter">
-            <span id="configStatus" class="configStatus">Not loaded</span>
+            <span id="toolPermissionsStatus" class="configStatus">Tool permissions are stored in this browser.</span>
             <div>
-              <button id="reloadConfigButton" type="button">Reload</button>
-              <button id="saveConfigButton" class="primaryButton" type="submit">Save</button>
+              <button id="saveToolPermissionsButton" class="primaryButton" type="submit">Save tools</button>
             </div>
           </footer>
         </form>
       </dialog>
 
-      <dialog id="toolsDialog" class="settingsDialog">
-        <form id="toolsForm" class="settingsPanel" method="dialog">
+      <dialog id="mcpDialog" class="settingsDialog">
+        <form id="mcpForm" class="settingsPanel" method="dialog">
           <header class="settingsHeader">
             <div>
-              <h2>Tools</h2>
-              <p>Add MCP servers and turn configured tools on or off</p>
+              <h2>MCP Configuration</h2>
+              <p>Add MCP servers and edit <code>.ai-harness/config.toml</code></p>
             </div>
-            <button id="closeToolsButton" class="iconButton" type="button" aria-label="Close tools">×</button>
+            <button id="closeMcpButton" class="iconButton" type="button" aria-label="Close MCP configuration">×</button>
           </header>
 
           <section class="toolsAddPanel" aria-label="Add MCP server">
@@ -248,8 +256,26 @@
             <div id="toolsList" class="toolsList"></div>
           </section>
 
+          <div class="settingsTemplates" aria-label="Config templates">
+            <button id="remoteTemplateButton" type="button">Remote MCP</button>
+            <button id="stdioTemplateButton" type="button">Local stdio MCP</button>
+            <button id="autoApproveTemplateButton" type="button">Auto approve MCP</button>
+          </div>
+
+          <textarea
+            id="configInput"
+            class="configInput"
+            spellcheck="false"
+            placeholder="# .ai-harness/config.toml"
+          ></textarea>
+
           <footer class="settingsFooter">
             <span id="toolsStatus" class="configStatus">Not loaded</span>
+            <span id="configStatus" class="configStatus">Config not loaded</span>
+            <div>
+              <button id="reloadConfigButton" type="button">Reload config</button>
+              <button id="saveConfigButton" class="primaryButton" type="button">Save MCP config</button>
+            </div>
           </footer>
         </form>
       </dialog>

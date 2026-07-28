@@ -15,11 +15,14 @@ const newChatButton = document.querySelector("#newChatButton");
 const recentsList = document.querySelector("#recentsList");
 const settingsButton = document.querySelector("#settingsButton");
 const toolsButton = document.querySelector("#toolsButton");
+const mcpButton = document.querySelector("#mcpButton");
 const settingsDialog = document.querySelector("#settingsDialog");
 const settingsForm = document.querySelector("#settingsForm");
 const closeSettingsButton = document.querySelector("#closeSettingsButton");
 const configInput = document.querySelector("#configInput");
 const configStatus = document.querySelector("#configStatus");
+const saveConfigButton = document.querySelector("#saveConfigButton");
+const settingsStatus = document.querySelector("#settingsStatus");
 const reloadConfigButton = document.querySelector("#reloadConfigButton");
 const remoteTemplateButton = document.querySelector("#remoteTemplateButton");
 const stdioTemplateButton = document.querySelector("#stdioTemplateButton");
@@ -27,6 +30,10 @@ const autoApproveTemplateButton = document.querySelector("#autoApproveTemplateBu
 const toolsDialog = document.querySelector("#toolsDialog");
 const toolsForm = document.querySelector("#toolsForm");
 const closeToolsButton = document.querySelector("#closeToolsButton");
+const mcpDialog = document.querySelector("#mcpDialog");
+const mcpForm = document.querySelector("#mcpForm");
+const closeMcpButton = document.querySelector("#closeMcpButton");
+const toolPermissionsStatus = document.querySelector("#toolPermissionsStatus");
 const toolTypeSelect = document.querySelector("#toolTypeSelect");
 const toolLabelInput = document.querySelector("#toolLabelInput");
 const toolUrlInput = document.querySelector("#toolUrlInput");
@@ -344,24 +351,6 @@ function renderMessage(role, text, images = []) {
   body.textContent = text;
 
   article.append(body);
-  if (role === "agent") {
-    const actions = document.createElement("div");
-    actions.className = "messageActions";
-    for (const label of ["Copy", "Good", "Bad", "Retry", "More"]) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.ariaLabel = label;
-      button.textContent = {
-        Copy: "▱",
-        Good: "♡",
-        Bad: "♢",
-        Retry: "↻",
-        More: "…",
-      }[label];
-      actions.append(button);
-    }
-    article.append(actions);
-  }
   messages.append(article);
   scrollToEnd(messages);
 }
@@ -535,6 +524,8 @@ function saveProviderSettings() {
   localStorage.setItem(PROVIDER_STORAGE_KEY, JSON.stringify(settings));
   send({ type: "provider_settings", ...settings });
   workspaceMeta.textContent = `${settings.provider} · ${settings.model || "default model"}`;
+  settingsStatus.textContent = "Provider settings saved";
+  settingsStatus.dataset.state = "success";
 }
 
 function normalizeToolPermissions(value = {}) {
@@ -574,6 +565,8 @@ function saveToolPermissions() {
   const permissions = currentToolPermissions();
   localStorage.setItem(TOOL_PERMISSIONS_STORAGE_KEY, JSON.stringify(permissions));
   send({ type: "tool_permissions", permissions });
+  toolPermissionsStatus.textContent = "Tool permissions saved";
+  toolPermissionsStatus.dataset.state = "success";
 }
 
 function defaultModelForProvider(provider) {
@@ -669,6 +662,7 @@ async function loadConfig() {
 
 async function saveConfig() {
   setConfigStatus("Saving...");
+  saveConfigButton.disabled = true;
   try {
     const response = await fetch("/api/config", {
       method: "PUT",
@@ -681,6 +675,8 @@ async function saveConfig() {
     addEvent("Config saved", `${payload.path} (${payload.bytes} bytes)`);
   } catch (error) {
     setConfigStatus(error.message, "error");
+  } finally {
+    saveConfigButton.disabled = false;
   }
 }
 
@@ -1029,7 +1025,7 @@ promptInput.addEventListener("input", () => {
   resizePromptInput();
 });
 promptInput.addEventListener("keydown", (event) => {
-  if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+  if (event.key === "Enter" && !event.shiftKey) {
     event.preventDefault();
     promptForm.requestSubmit();
     return;
@@ -1063,16 +1059,24 @@ window.addEventListener("resize", () => {
 
 settingsButton.addEventListener("click", async () => {
   renderProviderSettings();
-  renderToolPermissions();
+  settingsStatus.textContent = "Provider settings are stored in this browser.";
+  settingsStatus.dataset.state = "";
   settingsDialog.showModal();
   await loadProviderModels();
-  await loadConfig();
 });
 
 toolsButton.addEventListener("click", async () => {
   toolsDialog.showModal();
+  renderToolPermissions();
+  toolPermissionsStatus.textContent = "Tool permissions are stored in this browser.";
+  toolPermissionsStatus.dataset.state = "";
+});
+
+mcpButton.addEventListener("click", async () => {
+  mcpDialog.showModal();
   renderToolTypeFields();
   await loadTools();
+  await loadConfig();
 });
 
 closeSettingsButton.addEventListener("click", () => {
@@ -1083,7 +1087,14 @@ closeToolsButton.addEventListener("click", () => {
   toolsDialog.close();
 });
 
+closeMcpButton.addEventListener("click", () => {
+  mcpDialog.close();
+});
+
 reloadConfigButton.addEventListener("click", loadConfig);
+saveConfigButton.addEventListener("click", async () => {
+  await saveConfig();
+});
 refreshModelsButton.addEventListener("click", loadProviderModels);
 reloadToolsButton.addEventListener("click", loadTools);
 toolTypeSelect.addEventListener("change", renderToolTypeFields);
@@ -1091,11 +1102,14 @@ toolTypeSelect.addEventListener("change", renderToolTypeFields);
 settingsForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   saveProviderSettings();
-  saveToolPermissions();
-  await saveConfig();
 });
 
 toolsForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  saveToolPermissions();
+});
+
+mcpForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   await addTool();
 });
