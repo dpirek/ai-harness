@@ -30,6 +30,9 @@
           <button id="settingsButton" type="button" title="Settings">
             <span class="navIcon">⚙</span><span class="navLabel">Settings</span>
           </button>
+          <button id="toolsButton" type="button" title="Tools">
+            <span class="navIcon">▣</span><span class="navLabel">Tools</span>
+          </button>
           <!--
           <button type="button"><span class="navIcon">◎</span>Plugins</button>
           <button type="button"><span class="navIcon">▥</span>Library</button>
@@ -104,10 +107,28 @@
           <header class="settingsHeader">
             <div>
               <h2>Settings</h2>
-              <p>Edit <code>.ai-harness/config.toml</code></p>
+              <p>Configure provider and <code>.ai-harness/config.toml</code></p>
             </div>
             <button id="closeSettingsButton" class="iconButton" type="button" aria-label="Close settings">×</button>
           </header>
+
+          <section class="providerSettings" aria-label="AI provider settings">
+            <label>
+              <span>Provider</span>
+              <select id="providerSelect">
+                <option value="openai">OpenAI</option>
+                <option value="ollama">Ollama</option>
+              </select>
+            </label>
+            <label>
+              <span>Model</span>
+              <input id="providerModelInput" type="text" placeholder="gpt-5.1-codex">
+            </label>
+            <label>
+              <span>Base URL</span>
+              <input id="providerBaseUrlInput" type="url" placeholder="http://localhost:11434">
+            </label>
+          </section>
 
           <div class="settingsTemplates" aria-label="Config templates">
             <button id="remoteTemplateButton" type="button">Remote MCP</button>
@@ -128,6 +149,61 @@
               <button id="reloadConfigButton" type="button">Reload</button>
               <button id="saveConfigButton" class="primaryButton" type="submit">Save</button>
             </div>
+          </footer>
+        </form>
+      </dialog>
+
+      <dialog id="toolsDialog" class="settingsDialog">
+        <form id="toolsForm" class="settingsPanel" method="dialog">
+          <header class="settingsHeader">
+            <div>
+              <h2>Tools</h2>
+              <p>Add MCP servers and turn configured tools on or off</p>
+            </div>
+            <button id="closeToolsButton" class="iconButton" type="button" aria-label="Close tools">×</button>
+          </header>
+
+          <section class="toolsAddPanel" aria-label="Add MCP server">
+            <label>
+              <span>Type</span>
+              <select id="toolTypeSelect">
+                <option value="remote">Remote MCP</option>
+                <option value="stdio">Local stdio MCP</option>
+              </select>
+            </label>
+            <label>
+              <span>Label</span>
+              <input id="toolLabelInput" type="text" placeholder="docs">
+            </label>
+            <label class="remoteToolField">
+              <span>Server URL</span>
+              <input id="toolUrlInput" type="url" placeholder="https://example.com/mcp">
+            </label>
+            <label class="stdioToolField">
+              <span>Command</span>
+              <input id="toolCommandInput" type="text" placeholder="node">
+            </label>
+            <label class="stdioToolField">
+              <span>Args</span>
+              <input id="toolArgsInput" type="text" placeholder="/absolute/path/to/server.js">
+            </label>
+            <label class="stdioToolField">
+              <span>CWD</span>
+              <input id="toolCwdInput" type="text" placeholder="/absolute/path/to/server">
+            </label>
+            <button id="addToolButton" class="primaryButton" type="submit">Add server</button>
+          </section>
+
+          <section class="toolsListPanel" aria-label="Configured MCP servers">
+            <div class="toolsListHeader">
+              <h3>Configured servers</h3>
+              <button id="reloadToolsButton" type="button">Reload</button>
+            </div>
+            <div id="toolsList" class="toolsList"></div>
+          </section>
+
+          <footer class="settingsFooter">
+            <span id="toolsStatus" class="configStatus">Not loaded</span>
           </footer>
         </form>
       </dialog>

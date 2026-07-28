@@ -688,8 +688,151 @@ textarea:disabled {
   gap: 8px;
 }
 
+.providerSettings {
+  display: grid;
+  grid-template-columns: 150px minmax(160px, 1fr) minmax(220px, 1.2fr);
+  gap: 10px;
+}
+
+.providerSettings label,
+.toolsAddPanel label {
+  display: grid;
+  gap: 6px;
+}
+
+.providerSettings span,
+.toolsAddPanel span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.providerSettings input,
+.providerSettings select,
+.toolsAddPanel input,
+.toolsAddPanel select {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid #333;
+  border-radius: 8px;
+  background: #090909;
+  color: #ececec;
+  padding: 0 11px;
+  outline: 0;
+}
+
+.providerSettings input:focus,
+.providerSettings select:focus,
+.toolsAddPanel input:focus,
+.toolsAddPanel select:focus {
+  border-color: #555;
+}
+
+.toolsAddPanel {
+  display: grid;
+  grid-template-columns: 140px minmax(120px, 1fr) minmax(220px, 1.4fr);
+  gap: 10px;
+  align-items: end;
+  border: 1px solid #282828;
+  border-radius: 8px;
+  background: #101010;
+  padding: 12px;
+}
+
+.toolsAddPanel .primaryButton {
+  min-height: 40px;
+}
+
+.toolsListPanel {
+  display: grid;
+  gap: 10px;
+}
+
+.toolsListHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.toolsListHeader h3 {
+  margin: 0;
+  font-size: 0.96rem;
+}
+
+.toolsListHeader button {
+  min-height: 34px;
+  border: 1px solid #333;
+  border-radius: 999px;
+  background: #1f1f1f;
+  padding: 0 12px;
+  color: #e6e6e6;
+}
+
+.toolsList {
+  display: grid;
+  gap: 8px;
+  max-height: 310px;
+  overflow: auto;
+}
+
+.toolRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid #282828;
+  border-radius: 8px;
+  background: #0b0b0b;
+  padding: 12px;
+}
+
+.toolRow strong,
+.toolRow span {
+  display: block;
+  min-width: 0;
+}
+
+.toolRow strong {
+  color: #f0f0f0;
+  font-size: 0.94rem;
+}
+
+.toolRow span {
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.toggleButton {
+  min-width: 58px;
+  min-height: 34px;
+  border: 1px solid #444;
+  border-radius: 999px;
+  background: #191919;
+  color: #c7c7c7;
+  font-weight: 750;
+}
+
+.toggleButton.enabled {
+  border-color: rgba(136, 216, 198, 0.45);
+  background: rgba(136, 216, 198, 0.12);
+  color: #88d8c6;
+}
+
+.emptyTools {
+  margin: 0;
+  border: 1px solid #282828;
+  border-radius: 8px;
+  padding: 18px;
+  color: var(--muted);
+  text-align: center;
+}
+
 .settingsTemplates button,
-.settingsFooter button {
+.settingsFooter button,
+.primaryButton {
   min-height: 36px;
   border: 1px solid #333;
   border-radius: 999px;
@@ -700,12 +843,15 @@ textarea:disabled {
 }
 
 .settingsTemplates button:hover,
-.settingsFooter button:hover {
+.settingsFooter button:hover,
+.primaryButton:hover,
+.toolsListHeader button:hover {
   background: #2a2a2a;
   border-color: #4a4a4a;
 }
 
-.settingsFooter .primaryButton {
+.settingsFooter .primaryButton,
+.primaryButton {
   background: #f0f0f0;
   color: #151515;
   font-weight: 750;
@@ -843,6 +989,14 @@ textarea:disabled {
     display: flex;
     width: 100%;
     gap: 8px;
+  }
+
+  .providerSettings {
+    grid-template-columns: 1fr;
+  }
+
+  .toolsAddPanel {
+    grid-template-columns: 1fr;
   }
 
   .settingsFooter button {

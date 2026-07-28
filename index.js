@@ -5,7 +5,7 @@ import readline from "node:readline/promises";
 import { stdin, stdout, stderr } from "node:process";
 import { fileURLToPath } from "node:url";
 import { loadEnv } from "./lib/env.js";
-import { OpenAIClient } from "./lib/openai.js";
+import { createModelClient } from "./lib/openai.js";
 import { CodingAgent } from "./lib/agent.js";
 import { createTools } from "./lib/tools.js";
 import { loadMcpTools } from "./lib/mcp.js";
@@ -86,8 +86,9 @@ async function main() {
     return;
   }
 
+  const provider = process.env.AI_PROVIDER || "openai";
   const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
+  if (provider === "openai" && !apiKey) {
     throw new Error("OPENAI_API_KEY is required. Set it in the environment or .env.");
   }
 
@@ -106,9 +107,10 @@ async function main() {
     return /^(y|yes)$/i.test(answer.trim());
   };
 
-  const client = new OpenAIClient({
+  const client = createModelClient({
+    provider,
     apiKey,
-    baseUrl: process.env.OPENAI_BASE_URL,
+    baseUrl: provider === "ollama" ? process.env.OLLAMA_BASE_URL : process.env.OPENAI_BASE_URL,
   });
   const printInfo = (message) => {
     stdout.write(`${colors.dim}info: ${message}${colors.reset}\n`);
@@ -129,7 +131,11 @@ async function main() {
   const agent = new CodingAgent({
     client,
     tools,
-    model: args.model || process.env.OPENAI_MODEL || "gpt-5.1-codex",
+    model: args.model ||
+      process.env.AI_MODEL ||
+      (provider === "ollama"
+        ? process.env.OLLAMA_MODEL || "llama3.1"
+        : process.env.OPENAI_MODEL || "gpt-5.1-codex"),
     root,
     approve,
     onInfo: printInfo,

@@ -11,6 +11,7 @@ const emptyState = document.querySelector("#emptyState");
 const newChatButton = document.querySelector("#newChatButton");
 const recentsList = document.querySelector("#recentsList");
 const settingsButton = document.querySelector("#settingsButton");
+const toolsButton = document.querySelector("#toolsButton");
 const settingsDialog = document.querySelector("#settingsDialog");
 const settingsForm = document.querySelector("#settingsForm");
 const closeSettingsButton = document.querySelector("#closeSettingsButton");
@@ -20,6 +21,22 @@ const reloadConfigButton = document.querySelector("#reloadConfigButton");
 const remoteTemplateButton = document.querySelector("#remoteTemplateButton");
 const stdioTemplateButton = document.querySelector("#stdioTemplateButton");
 const autoApproveTemplateButton = document.querySelector("#autoApproveTemplateButton");
+const toolsDialog = document.querySelector("#toolsDialog");
+const toolsForm = document.querySelector("#toolsForm");
+const closeToolsButton = document.querySelector("#closeToolsButton");
+const toolTypeSelect = document.querySelector("#toolTypeSelect");
+const toolLabelInput = document.querySelector("#toolLabelInput");
+const toolUrlInput = document.querySelector("#toolUrlInput");
+const toolCommandInput = document.querySelector("#toolCommandInput");
+const toolArgsInput = document.querySelector("#toolArgsInput");
+const toolCwdInput = document.querySelector("#toolCwdInput");
+const addToolButton = document.querySelector("#addToolButton");
+const reloadToolsButton = document.querySelector("#reloadToolsButton");
+const toolsList = document.querySelector("#toolsList");
+const toolsStatus = document.querySelector("#toolsStatus");
+const providerSelect = document.querySelector("#providerSelect");
+const providerModelInput = document.querySelector("#providerModelInput");
+const providerBaseUrlInput = document.querySelector("#providerBaseUrlInput");
 const appShell = document.querySelector("#appShell");
 const sidebarToggleButton = document.querySelector("#sidebarToggleButton");
 const streamResizeHandle = document.querySelector("#streamResizeHandle");
@@ -34,6 +51,7 @@ let promptHistoryDraft = "";
 const STORAGE_KEY = "ai-harness.sessions";
 const SIDEBAR_STORAGE_KEY = "ai-harness.sidebarCollapsed";
 const STREAM_WIDTH_STORAGE_KEY = "ai-harness.streamWidth";
+const PROVIDER_STORAGE_KEY = "ai-harness.providerSettings";
 const MIN_STREAM_WIDTH = 260;
 const CONFIG_TEMPLATES = {
   remote: `
@@ -58,6 +76,8 @@ message_format = "content-length"
 auto_approve = true
 `,
 };
+
+let toolsConfigContent = "";
 
 function createSession(title = "New chat") {
   return {
@@ -374,6 +394,48 @@ function send(payload) {
   }
 }
 
+function defaultProviderSettings() {
+  return {
+    provider: "openai",
+    model: "gpt-5.1-codex",
+    baseUrl: "",
+  };
+}
+
+function loadProviderSettings() {
+  try {
+    return { ...defaultProviderSettings(), ...JSON.parse(localStorage.getItem(PROVIDER_STORAGE_KEY) || "{}") };
+  } catch {
+    localStorage.removeItem(PROVIDER_STORAGE_KEY);
+    return defaultProviderSettings();
+  }
+}
+
+function currentProviderSettings() {
+  return {
+    provider: providerSelect.value,
+    model: providerModelInput.value.trim(),
+    baseUrl: providerBaseUrlInput.value.trim(),
+  };
+}
+
+function saveProviderSettings() {
+  const settings = currentProviderSettings();
+  localStorage.setItem(PROVIDER_STORAGE_KEY, JSON.stringify(settings));
+  send({ type: "provider_settings", ...settings });
+  workspaceMeta.textContent = `${settings.provider} · ${settings.model || "default model"}`;
+}
+
+function renderProviderSettings(settings = loadProviderSettings()) {
+  providerSelect.value = settings.provider === "ollama" ? "ollama" : "openai";
+  providerModelInput.value = settings.model || "";
+  providerBaseUrlInput.value = settings.baseUrl || "";
+  providerModelInput.placeholder = providerSelect.value === "ollama" ? "llama3.1" : "gpt-5.1-codex";
+  providerBaseUrlInput.placeholder = providerSelect.value === "ollama"
+    ? "http://localhost:11434"
+    : "https://api.openai.com/v1";
+}
+
 function setConfigStatus(message, state = "") {
   configStatus.textContent = message;
   configStatus.dataset.state = state;
@@ -418,11 +480,204 @@ async function saveConfig() {
   }
 }
 
+async function saveConfigContent(content) {
+  const response = await fetch("/api/config", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ content }),
+  });
+  const payload = await response.json();
+  if (!payload.ok) throw new Error(payload.error || "Unable to save config.");
+  send({ type: "reload_tools" });
+  configInput.value = content;
+  return payload;
+}
+
+function stripTomlComment(line) {
+  return line.replace(/^\s*#\s?/, "");
+}
+
+function mcpBlocks(content) {
+  const lines = content.split("\n");
+  const headerPattern = /^\s*(#\s*)?(\[\[mcp\.servers\]\]|\[mcp_servers\.([A-Za-z0-9_-]+)\])\s*$/;
+  const starts = [];
+  lines.forEach((line, index) => {
+    const match = line.match(headerPattern);
+    if (match) starts.push({ index, match });
+  });
+
+  return starts.map((start, listIndex) => {
+    const end = starts[listIndex + 1]?.index ?? lines.length;
+    const blockLines = lines.slice(start.index, end);
+    const uncommented = blockLines.map(stripTomlComment).join("\n");
+    const isRemote = start.match[2] === "[[mcp.servers]]";
+    const label = isRemote
+      ? uncommented.match(/server_label\s*=\s*"([^"]+)"/)?.[1] || "remote"
+      : start.match[3];
+    return {
+      index: listIndex,
+      start: start.index,
+      end,
+      enabled: !start.match[1],
+      type: isRemote ? "remote" : "stdio",
+      label,
+      detail: isRemote
+        ? uncommented.match(/server_url\s*=\s*"([^"]+)"/)?.[1] ||
+          uncommented.match(/connector_id\s*=\s*"([^"]+)"/)?.[1] ||
+          "remote MCP server"
+        : uncommented.match(/command\s*=\s*"([^"]+)"/)?.[1] || "stdio MCP server",
+    };
+  });
+}
+
+function setToolBlockEnabled(content, block, enabled) {
+  const lines = content.split("\n");
+  const changed = lines.slice(block.start, block.end).map((line) => {
+    if (!line.trim()) return line;
+    if (enabled) return line.replace(/^(\s*)#\s?/, "$1");
+    return /^\s*#/.test(line) ? line : `# ${line}`;
+  });
+  lines.splice(block.start, block.end - block.start, ...changed);
+  return lines.join("\n");
+}
+
+function quoteToml(value) {
+  return String(value || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function toolSnippet() {
+  const label = toolLabelInput.value.trim();
+  if (!/^[A-Za-z0-9_-]+$/.test(label)) {
+    throw new Error("Label must contain only letters, numbers, _ or -.");
+  }
+
+  if (toolTypeSelect.value === "remote") {
+    const url = toolUrlInput.value.trim();
+    if (!url) throw new Error("Server URL is required.");
+    return `[[mcp.servers]]
+server_label = "${quoteToml(label)}"
+server_url = "${quoteToml(url)}"
+require_approval = "always"`;
+  }
+
+  const command = toolCommandInput.value.trim();
+  if (!command) throw new Error("Command is required.");
+  const args = toolArgsInput.value
+    .split(/\s+/)
+    .map((arg) => arg.trim())
+    .filter(Boolean)
+    .map((arg) => `"${quoteToml(arg)}"`)
+    .join(", ");
+  const cwd = toolCwdInput.value.trim();
+  return `[mcp_servers.${label}]
+command = "${quoteToml(command)}"
+args = [${args}]${cwd ? `\ncwd = "${quoteToml(cwd)}"` : ""}
+message_format = "content-length"`;
+}
+
+function setToolsStatus(message, state = "") {
+  toolsStatus.textContent = message;
+  toolsStatus.dataset.state = state;
+}
+
+function renderToolTypeFields() {
+  const remote = toolTypeSelect.value === "remote";
+  document.querySelectorAll(".remoteToolField").forEach((field) => {
+    field.hidden = !remote;
+  });
+  document.querySelectorAll(".stdioToolField").forEach((field) => {
+    field.hidden = remote;
+  });
+}
+
+function renderTools() {
+  const blocks = mcpBlocks(toolsConfigContent);
+  toolsList.replaceChildren();
+  if (blocks.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "emptyTools";
+    empty.textContent = "No MCP servers configured.";
+    toolsList.append(empty);
+    return;
+  }
+
+  for (const block of blocks) {
+    const row = document.createElement("article");
+    row.className = "toolRow";
+
+    const meta = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = block.label;
+    const detail = document.createElement("span");
+    detail.textContent = `${block.type} · ${block.detail}`;
+    meta.append(title, detail);
+
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = `toggleButton ${block.enabled ? "enabled" : ""}`;
+    toggle.textContent = block.enabled ? "On" : "Off";
+    toggle.addEventListener("click", async () => {
+      setToolsStatus(`${block.enabled ? "Disabling" : "Enabling"} ${block.label}...`);
+      try {
+        toolsConfigContent = setToolBlockEnabled(toolsConfigContent, block, !block.enabled);
+        await saveConfigContent(toolsConfigContent);
+        renderTools();
+        setToolsStatus(`${block.label} ${block.enabled ? "disabled" : "enabled"}`, "success");
+      } catch (error) {
+        setToolsStatus(error.message, "error");
+      }
+    });
+
+    row.append(meta, toggle);
+    toolsList.append(row);
+  }
+}
+
+async function loadTools() {
+  setToolsStatus("Loading...");
+  reloadToolsButton.disabled = true;
+  try {
+    const response = await fetch("/api/config");
+    const payload = await response.json();
+    if (!payload.ok) throw new Error(payload.error || "Unable to load tools.");
+    toolsConfigContent = payload.content;
+    renderTools();
+    setToolsStatus(payload.exists ? "Loaded MCP servers" : "No config file yet");
+  } catch (error) {
+    setToolsStatus(error.message, "error");
+  } finally {
+    reloadToolsButton.disabled = false;
+  }
+}
+
+async function addTool() {
+  setToolsStatus("Adding server...");
+  addToolButton.disabled = true;
+  try {
+    const snippet = toolSnippet();
+    const prefix = toolsConfigContent.trimEnd();
+    toolsConfigContent = `${prefix}${prefix ? "\n\n" : ""}${snippet}\n`;
+    await saveConfigContent(toolsConfigContent);
+    toolLabelInput.value = "";
+    toolUrlInput.value = "";
+    toolCommandInput.value = "";
+    toolArgsInput.value = "";
+    toolCwdInput.value = "";
+    renderTools();
+    setToolsStatus("Server added", "success");
+  } catch (error) {
+    setToolsStatus(error.message, "error");
+  } finally {
+    addToolButton.disabled = false;
+  }
+}
+
 async function loadHealth() {
   try {
     const response = await fetch("/api/health");
     const health = await response.json();
-    workspaceMeta.textContent = `${health.model} · API key ${health.hasApiKey ? "configured" : "missing"} · writes ${health.approveAll ? "auto-approved" : "approval-gated"}`;
+    const settings = loadProviderSettings();
+    workspaceMeta.textContent = `${settings.provider || health.provider} · ${settings.model || health.model}`;
   } catch {
     workspaceMeta.textContent = "Server health unavailable";
   }
@@ -435,6 +690,7 @@ function connect() {
 
   socket.addEventListener("open", () => {
     setState("Online", "state-online");
+    send({ type: "provider_settings", ...loadProviderSettings() });
     setBusy(false);
     addEvent("Socket connected");
   });
@@ -458,6 +714,10 @@ function connect() {
         model: payload.model,
         approveAll: payload.approveAll,
       });
+      return;
+    }
+    if (payload.type === "reload_tools") {
+      addEvent("Tools reloaded");
       return;
     }
     if (payload.type === "info") {
@@ -560,15 +820,44 @@ settingsButton.addEventListener("click", async () => {
   await loadConfig();
 });
 
+toolsButton.addEventListener("click", async () => {
+  toolsDialog.showModal();
+  renderToolTypeFields();
+  await loadTools();
+});
+
 closeSettingsButton.addEventListener("click", () => {
   settingsDialog.close();
 });
 
+closeToolsButton.addEventListener("click", () => {
+  toolsDialog.close();
+});
+
 reloadConfigButton.addEventListener("click", loadConfig);
+reloadToolsButton.addEventListener("click", loadTools);
+toolTypeSelect.addEventListener("change", renderToolTypeFields);
 
 settingsForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  saveProviderSettings();
   await saveConfig();
+});
+
+toolsForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await addTool();
+});
+
+providerSelect.addEventListener("change", () => {
+  const nextProvider = providerSelect.value;
+  if (!providerModelInput.value || ["gpt-5.1-codex", "llama3.1"].includes(providerModelInput.value)) {
+    providerModelInput.value = nextProvider === "ollama" ? "llama3.1" : "gpt-5.1-codex";
+  }
+  if (!providerBaseUrlInput.value || /api\.openai\.com|localhost:11434/.test(providerBaseUrlInput.value)) {
+    providerBaseUrlInput.value = nextProvider === "ollama" ? "http://localhost:11434" : "";
+  }
+  renderProviderSettings(currentProviderSettings());
 });
 
 remoteTemplateButton.addEventListener("click", () => {
@@ -603,6 +892,7 @@ clearEventsButton.addEventListener("click", () => {
 
 loadHealth();
 connect();
+renderProviderSettings();
 loadSidebarState();
 loadStreamWidth();
 renderRecents();

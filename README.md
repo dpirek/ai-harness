@@ -16,11 +16,30 @@ No `npm install` is required.
 Create `.env`:
 
 ```env
+AI_PROVIDER=openai
 OPENAI_API_KEY=your_api_key
 OPENAI_MODEL=gpt-5.1-codex
 ```
 
 `OPENAI_BASE_URL` is optional.
+
+For Ollama:
+
+```env
+AI_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=llama3.1
+```
+
+The web Settings panel can also switch between OpenAI and Ollama. Provider
+changes apply to new in-memory agent sessions; active browser chat history is
+sent back as context after refresh.
+
+The web Tools panel manages MCP server entries in `.ai-harness/config.toml`.
+It can add remote MCP or local stdio MCP servers and turn existing server blocks
+on or off by commenting/uncommenting their TOML block. Local stdio MCP tools are
+available to OpenAI and Ollama; remote MCP server definitions are passed through
+to providers that support hosted MCP tool calls.
 
 ## Run
 

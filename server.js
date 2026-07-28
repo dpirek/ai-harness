@@ -6,7 +6,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadEnv } from "./lib/env.js";
-import { OpenAIClient } from "./lib/openai.js";
+import { createModelClient } from "./lib/openai.js";
 import { CodingAgent } from "./lib/agent.js";
 import { createTools } from "./lib/tools.js";
 import { loadMcpTools } from "./lib/mcp.js";
@@ -28,6 +28,7 @@ const CONTENT_TYPES = {
 };
 
 const WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+const providerSettings = new Map();
 
 function json(res, status, payload) {
   const body = JSON.stringify(payload);
@@ -237,6 +238,13 @@ ${prompt}`;
 
 async function createAgentSession(socket) {
   const root = process.cwd();
+  const settings = providerSettings.get(socket) || {};
+  const provider = settings.provider || process.env.AI_PROVIDER || "openai";
+  const model = settings.model ||
+    process.env.AI_MODEL ||
+    (provider === "ollama"
+      ? process.env.OLLAMA_MODEL || "llama3.1"
+      : process.env.OPENAI_MODEL || "gpt-5.1-codex");
   const approveAll = process.env.AI_HARNESS_WEB_APPROVE === "true";
   const approve = async (description) => {
     sendJson(socket, { type: "approval", description, approved: approveAll });
@@ -246,20 +254,22 @@ async function createAgentSession(socket) {
   const onTool = ({ name, args }) => sendJson(socket, { type: "tool", name, args });
   const onEvent = (event) => sendJson(socket, { type: "agent_event", event });
 
-  if (!process.env.OPENAI_API_KEY) {
+  if (provider === "openai" && !process.env.OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY is required. Set it in the environment or .env.");
   }
 
-  const client = new OpenAIClient({
+  const client = createModelClient({
+    provider,
     apiKey: process.env.OPENAI_API_KEY,
-    baseUrl: process.env.OPENAI_BASE_URL,
+    baseUrl: settings.baseUrl ||
+      (provider === "ollama" ? process.env.OLLAMA_BASE_URL : process.env.OPENAI_BASE_URL),
   });
   const localTools = createTools({ root, approve });
   const mcpTools = await loadMcpTools({ root, approve, onInfo });
   return new CodingAgent({
     client,
     tools: [...localTools, ...mcpTools],
-    model: process.env.OPENAI_MODEL || "gpt-5.1-codex",
+    model,
     root,
     approve,
     onInfo,
@@ -311,6 +321,22 @@ function handleWebSocket(socket, req) {
         const sessionId = typeof payload.sessionId === "string" && payload.sessionId
           ? payload.sessionId.slice(0, 120)
           : "default";
+        if (payload.type === "provider_settings") {
+          const provider = payload.provider === "ollama" ? "ollama" : "openai";
+          providerSettings.set(socket, {
+            provider,
+            model: typeof payload.model === "string" ? payload.model.trim() : "",
+            baseUrl: typeof payload.baseUrl === "string" ? payload.baseUrl.trim() : "",
+          });
+          agentPromises.clear();
+          sendJson(socket, { type: "provider_settings", ok: true, provider });
+          continue;
+        }
+        if (payload.type === "reload_tools") {
+          agentPromises.clear();
+          sendJson(socket, { type: "reload_tools", ok: true });
+          continue;
+        }
         if (payload.type === "reset") {
           const agent = await agentPromises.get(sessionId);
           agent?.reset();
@@ -353,9 +379,15 @@ function handleWebSocket(socket, req) {
   socket.on("error", () => {});
   sendJson(socket, {
     type: "ready",
-    model: process.env.OPENAI_MODEL || "gpt-5.1-codex",
+    provider: process.env.AI_PROVIDER || "openai",
+    model: process.env.AI_MODEL ||
+      (process.env.AI_PROVIDER === "ollama"
+        ? process.env.OLLAMA_MODEL || "llama3.1"
+        : process.env.OPENAI_MODEL || "gpt-5.1-codex"),
+    ollamaBaseUrl: process.env.OLLAMA_BASE_URL || "http://localhost:11434",
     approveAll: process.env.AI_HARNESS_WEB_APPROVE === "true",
   });
+  socket.on("close", () => providerSettings.delete(socket));
 }
 
 const server = http.createServer(async (req, res) => {
@@ -363,7 +395,13 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === "/api/health") {
     json(res, 200, {
       ok: true,
-      model: process.env.OPENAI_MODEL || "gpt-5.1-codex",
+      provider: process.env.AI_PROVIDER || "openai",
+      model: process.env.AI_MODEL ||
+        (process.env.AI_PROVIDER === "ollama"
+          ? process.env.OLLAMA_MODEL || "llama3.1"
+          : process.env.OPENAI_MODEL || "gpt-5.1-codex"),
+      ollamaModel: process.env.OLLAMA_MODEL || "llama3.1",
+      ollamaBaseUrl: process.env.OLLAMA_BASE_URL || "http://localhost:11434",
       hasApiKey: Boolean(process.env.OPENAI_API_KEY),
       approveAll: process.env.AI_HARNESS_WEB_APPROVE === "true",
     });

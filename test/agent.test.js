@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { CodingAgent, extractText } from "../lib/agent.js";
+import { OllamaClient } from "../lib/openai.js";
 
 test("extractText reads message output", () => {
   assert.equal(
@@ -185,4 +186,120 @@ test("agent emits run events for web streaming", async () => {
     { type: "response", id: "resp_1" },
     { type: "final", text: "Done." },
   ]);
+});
+
+test("ollama client adapts chat tool calls to response function calls", async () => {
+  const requests = [];
+  const client = new OllamaClient({
+    baseUrl: "http://ollama.test",
+    async fetchImpl(url, options) {
+      requests.push({ url, body: JSON.parse(options.body) });
+      return {
+        ok: true,
+        status: 200,
+        async text() {
+          return JSON.stringify({
+            message: {
+              role: "assistant",
+              content: "",
+              tool_calls: [{
+                function: {
+                  name: "echo",
+                  arguments: { value: "hello" },
+                },
+              }],
+            },
+          });
+        },
+      };
+    },
+  });
+
+  const response = await client.createResponse({
+    model: "llama3.1",
+    instructions: "Use tools.",
+    input: [{
+      role: "user",
+      content: [{ type: "input_text", text: "say hello" }],
+    }],
+    tools: [{
+      type: "function",
+      name: "echo",
+      description: "Echo input.",
+      parameters: {
+        type: "object",
+        properties: { value: { type: "string" } },
+        required: ["value"],
+        additionalProperties: false,
+      },
+    }],
+  });
+
+  assert.equal(requests[0].url, "http://ollama.test/api/chat");
+  assert.equal(requests[0].body.messages[0].role, "system");
+  assert.equal(requests[0].body.messages[1].content, "say hello");
+  assert.deepEqual(response.output, [{
+    type: "function_call",
+    name: "echo",
+    call_id: "call_1",
+    arguments: '{"value":"hello"}',
+  }]);
+});
+
+test("ollama client retries without tools for models that do not support them", async () => {
+  const requests = [];
+  const client = new OllamaClient({
+    baseUrl: "http://ollama.test",
+    async fetchImpl(url, options) {
+      requests.push({ url, body: JSON.parse(options.body) });
+      if (requests.length === 1) {
+        return {
+          ok: false,
+          status: 400,
+          async text() {
+            return JSON.stringify({
+              error: "registry.ollama.ai/library/llama3.2-vision:latest does not support tools",
+            });
+          },
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        async text() {
+          return JSON.stringify({
+            message: {
+              role: "assistant",
+              content: "Tools are unavailable for this model.",
+            },
+          });
+        },
+      };
+    },
+  });
+
+  const response = await client.createResponse({
+    model: "llama3.2-vision",
+    instructions: "Answer.",
+    input: [{
+      role: "user",
+      content: [{ type: "input_text", text: "hello" }],
+    }],
+    tools: [{
+      type: "function",
+      name: "echo",
+      description: "Echo input.",
+      parameters: {
+        type: "object",
+        properties: { value: { type: "string" } },
+        required: ["value"],
+        additionalProperties: false,
+      },
+    }],
+  });
+
+  assert.equal(requests.length, 2);
+  assert.ok(Array.isArray(requests[0].body.tools));
+  assert.equal(Object.hasOwn(requests[1].body, "tools"), false);
+  assert.equal(response.output_text, "Tools are unavailable for this model.");
 });
