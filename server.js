@@ -236,7 +236,7 @@ Current user message:
 ${prompt}`;
 }
 
-async function createAgentSession(socket) {
+async function createAgentSession(socket, sessionId, streamStates) {
   const root = process.cwd();
   const settings = providerSettings.get(socket) || {};
   const provider = settings.provider || process.env.AI_PROVIDER || "openai";
@@ -253,6 +253,15 @@ async function createAgentSession(socket) {
   const onInfo = (message) => sendJson(socket, { type: "info", message });
   const onTool = ({ name, args }) => sendJson(socket, { type: "tool", name, args });
   const onEvent = (event) => sendJson(socket, { type: "agent_event", event });
+  const onTextDelta = (text) => {
+    const state = streamStates.get(sessionId) || { started: false };
+    if (!state.started) {
+      sendJson(socket, { type: "answer_start", sessionId });
+      state.started = true;
+      streamStates.set(sessionId, state);
+    }
+    sendJson(socket, { type: "answer_delta", sessionId, text });
+  };
 
   if (provider === "openai" && !process.env.OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY is required. Set it in the environment or .env.");
@@ -275,6 +284,7 @@ async function createAgentSession(socket) {
     onInfo,
     onTool,
     onEvent,
+    onTextDelta,
   });
 }
 
@@ -298,6 +308,7 @@ function handleWebSocket(socket, req) {
 
   let frameBuffer = Buffer.alloc(0);
   const agentPromises = new Map();
+  const streamStates = new Map();
   let running = false;
 
   socket.on("data", async (chunk) => {
@@ -329,11 +340,13 @@ function handleWebSocket(socket, req) {
             baseUrl: typeof payload.baseUrl === "string" ? payload.baseUrl.trim() : "",
           });
           agentPromises.clear();
+          streamStates.clear();
           sendJson(socket, { type: "provider_settings", ok: true, provider });
           continue;
         }
         if (payload.type === "reload_tools") {
           agentPromises.clear();
+          streamStates.clear();
           sendJson(socket, { type: "reload_tools", ok: true });
           continue;
         }
@@ -356,16 +369,19 @@ function handleWebSocket(socket, req) {
         try {
           const hasExistingAgent = agentPromises.has(sessionId);
           if (!hasExistingAgent) {
-            agentPromises.set(sessionId, createAgentSession(socket));
+            agentPromises.set(sessionId, createAgentSession(socket, sessionId, streamStates));
           }
           const agent = await agentPromises.get(sessionId);
           const prompt = hasExistingAgent
             ? payload.prompt
             : promptWithHistory(payload.prompt, payload.history);
+          streamStates.set(sessionId, { started: false });
           const text = await agent.run(prompt);
           sendJson(socket, { type: "done", text, sessionId });
+          streamStates.delete(sessionId);
         } catch (error) {
           sendJson(socket, { type: "error", error: error.message, sessionId });
+          streamStates.delete(sessionId);
         } finally {
           running = false;
         }

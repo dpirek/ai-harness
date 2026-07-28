@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { CodingAgent, extractText } from "../lib/agent.js";
-import { OllamaClient } from "../lib/openai.js";
+import { OllamaClient, OpenAIClient } from "../lib/openai.js";
 
 test("extractText reads message output", () => {
   assert.equal(
@@ -302,4 +302,86 @@ test("ollama client retries without tools for models that do not support them", 
   assert.ok(Array.isArray(requests[0].body.tools));
   assert.equal(Object.hasOwn(requests[1].body, "tools"), false);
   assert.equal(response.output_text, "Tools are unavailable for this model.");
+});
+
+test("openai client streams response text deltas", async () => {
+  const deltas = [];
+  const encoder = new TextEncoder();
+  const client = new OpenAIClient({
+    apiKey: "test-key",
+    baseUrl: "https://api.test",
+    async fetchImpl() {
+      return {
+        ok: true,
+        status: 200,
+        body: new ReadableStream({
+          start(controller) {
+            controller.enqueue(encoder.encode(
+              'data: {"type":"response.output_text.delta","delta":"Hel"}\n\n' +
+              'data: {"type":"response.output_text.delta","delta":"lo"}\n\n' +
+              'data: {"type":"response.completed","response":{"id":"resp_1","output_text":"Hello"}}\n\n',
+            ));
+            controller.close();
+          },
+        }),
+      };
+    },
+  });
+
+  const response = await client.createResponse({
+    model: "test-model",
+    instructions: "Answer.",
+    input: [{
+      role: "user",
+      content: [{ type: "input_text", text: "hello" }],
+    }],
+    tools: [],
+  }, {
+    onTextDelta(delta) {
+      deltas.push(delta);
+    },
+  });
+
+  assert.deepEqual(deltas, ["Hel", "lo"]);
+  assert.equal(response.output_text, "Hello");
+});
+
+test("ollama client streams chat response text deltas", async () => {
+  const deltas = [];
+  const encoder = new TextEncoder();
+  const client = new OllamaClient({
+    baseUrl: "http://ollama.test",
+    async fetchImpl() {
+      return {
+        ok: true,
+        status: 200,
+        body: new ReadableStream({
+          start(controller) {
+            controller.enqueue(encoder.encode(
+              '{"message":{"role":"assistant","content":"Hel"},"done":false}\n' +
+              '{"message":{"role":"assistant","content":"lo"},"done":true}\n',
+            ));
+            controller.close();
+          },
+        }),
+      };
+    },
+  });
+
+  const response = await client.createResponse({
+    model: "llama3.1",
+    instructions: "Answer.",
+    input: [{
+      role: "user",
+      content: [{ type: "input_text", text: "hello" }],
+    }],
+    tools: [],
+  }, {
+    onTextDelta(delta) {
+      deltas.push(delta);
+    },
+  });
+
+  assert.deepEqual(deltas, ["Hel", "lo"]);
+  assert.equal(response.output_text, "Hello");
 });

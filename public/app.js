@@ -47,6 +47,7 @@ let activeSessionId = null;
 let pendingSessionId = null;
 let promptHistoryIndex = null;
 let promptHistoryDraft = "";
+let streamingAnswer = null;
 
 const STORAGE_KEY = "ai-harness.sessions";
 const SIDEBAR_STORAGE_KEY = "ai-harness.sidebarCollapsed";
@@ -284,6 +285,35 @@ function renderMessage(role, text) {
   }
   messages.append(article);
   scrollToEnd(messages);
+}
+
+function startStreamingAnswer(sessionId) {
+  streamingAnswer = { sessionId, text: "", body: null };
+  if (sessionId !== activeSessionId) return;
+
+  emptyState?.remove();
+  const article = document.createElement("article");
+  article.className = "message message-agent message-streaming";
+  const body = document.createElement("p");
+  article.append(body);
+  messages.append(article);
+  streamingAnswer.body = body;
+  scrollToEnd(messages);
+}
+
+function appendStreamingAnswer(sessionId, text) {
+  if (!streamingAnswer || streamingAnswer.sessionId !== sessionId) {
+    startStreamingAnswer(sessionId);
+  }
+  streamingAnswer.text += text;
+  if (streamingAnswer.body && sessionId === activeSessionId) {
+    streamingAnswer.body.textContent = streamingAnswer.text;
+    scrollToEnd(messages);
+  }
+}
+
+function finishStreamingAnswer() {
+  streamingAnswer = null;
 }
 
 function renderMessages() {
@@ -736,10 +766,19 @@ function connect() {
       addEvent(describeAgentEvent(payload.event), payload.event);
       return;
     }
+    if (payload.type === "answer_start") {
+      startStreamingAnswer(payload.sessionId || pendingSessionId || activeSessionId);
+      return;
+    }
+    if (payload.type === "answer_delta") {
+      appendStreamingAnswer(payload.sessionId || pendingSessionId || activeSessionId, payload.text || "");
+      return;
+    }
     if (payload.type === "done") {
       const targetSessionId = payload.sessionId || pendingSessionId || activeSessionId;
       addMessageToSession(targetSessionId, "agent", payload.text);
       if (targetSessionId === activeSessionId) renderMessages();
+      finishStreamingAnswer();
       pendingSessionId = null;
       setBusy(false);
       return;
@@ -754,6 +793,7 @@ function connect() {
       if (targetSessionId === activeSessionId) renderMessages();
       addEvent("Error", payload.error);
       setState("Error", "state-error");
+      finishStreamingAnswer();
       pendingSessionId = null;
       setBusy(false);
     }
