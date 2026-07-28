@@ -145,6 +145,37 @@
             </div>
           </section>
 
+          <section class="toolPermissions" aria-label="Local tool permissions">
+            <div class="toolPermissionsHeader">
+              <h3>Allowed Tool Calls</h3>
+              <p>Choose which built-in workspace tools the model can call.</p>
+            </div>
+            <label>
+              <input type="checkbox" data-tool-permission="list_files">
+              <span>List files</span>
+            </label>
+            <label>
+              <input type="checkbox" data-tool-permission="search_files">
+              <span>Search files</span>
+            </label>
+            <label>
+              <input type="checkbox" data-tool-permission="read_file">
+              <span>Read files</span>
+            </label>
+            <label>
+              <input type="checkbox" data-tool-permission="write_file">
+              <span>Write files</span>
+            </label>
+            <label>
+              <input type="checkbox" data-tool-permission="curl">
+              <span>Curl</span>
+            </label>
+            <label>
+              <input type="checkbox" data-tool-permission="run_command">
+              <span>Run commands</span>
+            </label>
+          </section>
+
           <div class="settingsTemplates" aria-label="Config templates">
             <button id="remoteTemplateButton" type="button">Remote MCP</button>
             <button id="stdioTemplateButton" type="button">Local stdio MCP</button>

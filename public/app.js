@@ -44,6 +44,7 @@ const providerApiKeyInput = document.querySelector("#providerApiKeyInput");
 const providerApiKeyField = document.querySelector("#providerApiKeyField");
 const refreshModelsButton = document.querySelector("#refreshModelsButton");
 const providerModelsStatus = document.querySelector("#providerModelsStatus");
+const toolPermissionInputs = [...document.querySelectorAll("[data-tool-permission]")];
 const appShell = document.querySelector("#appShell");
 const sidebarToggleButton = document.querySelector("#sidebarToggleButton");
 const streamResizeHandle = document.querySelector("#streamResizeHandle");
@@ -61,8 +62,17 @@ const STORAGE_KEY = "ai-harness.sessions";
 const SIDEBAR_STORAGE_KEY = "ai-harness.sidebarCollapsed";
 const STREAM_WIDTH_STORAGE_KEY = "ai-harness.streamWidth";
 const PROVIDER_STORAGE_KEY = "ai-harness.providerSettings";
+const TOOL_PERMISSIONS_STORAGE_KEY = "ai-harness.toolPermissions";
 const MIN_STREAM_WIDTH = 260;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const DEFAULT_TOOL_PERMISSIONS = {
+  list_files: true,
+  read_file: false,
+  write_file: false,
+  search_files: true,
+  curl: true,
+  run_command: true,
+};
 const CONFIG_TEMPLATES = {
   remote: `
 [[mcp.servers]]
@@ -527,6 +537,45 @@ function saveProviderSettings() {
   workspaceMeta.textContent = `${settings.provider} · ${settings.model || "default model"}`;
 }
 
+function normalizeToolPermissions(value = {}) {
+  return Object.fromEntries(
+    Object.entries(DEFAULT_TOOL_PERMISSIONS).map(([name, defaultValue]) => [
+      name,
+      typeof value[name] === "boolean" ? value[name] : defaultValue,
+    ]),
+  );
+}
+
+function loadToolPermissions() {
+  try {
+    return normalizeToolPermissions(JSON.parse(localStorage.getItem(TOOL_PERMISSIONS_STORAGE_KEY) || "{}"));
+  } catch {
+    localStorage.removeItem(TOOL_PERMISSIONS_STORAGE_KEY);
+    return normalizeToolPermissions();
+  }
+}
+
+function currentToolPermissions() {
+  const permissions = normalizeToolPermissions();
+  for (const input of toolPermissionInputs) {
+    permissions[input.dataset.toolPermission] = input.checked;
+  }
+  return permissions;
+}
+
+function renderToolPermissions(settings = loadToolPermissions()) {
+  const permissions = normalizeToolPermissions(settings);
+  for (const input of toolPermissionInputs) {
+    input.checked = permissions[input.dataset.toolPermission] === true;
+  }
+}
+
+function saveToolPermissions() {
+  const permissions = currentToolPermissions();
+  localStorage.setItem(TOOL_PERMISSIONS_STORAGE_KEY, JSON.stringify(permissions));
+  send({ type: "tool_permissions", permissions });
+}
+
 function defaultModelForProvider(provider) {
   if (provider === "custom") return "custom-model";
   return provider === "ollama" ? "llama3.1" : "gpt-5.1-codex";
@@ -846,6 +895,7 @@ function connect() {
   socket.addEventListener("open", () => {
     setState("Online", "state-online");
     send({ type: "provider_settings", ...loadProviderSettings() });
+    send({ type: "tool_permissions", permissions: loadToolPermissions() });
     setBusy(false);
     addEvent("Socket connected");
   });
@@ -878,6 +928,10 @@ function connect() {
         model: payload.model,
         baseUrl: payload.baseUrl,
       });
+      return;
+    }
+    if (payload.type === "tool_permissions") {
+      addEvent("Tool permissions updated", payload.permissions);
       return;
     }
     if (payload.type === "reload_tools") {
@@ -1009,6 +1063,7 @@ window.addEventListener("resize", () => {
 
 settingsButton.addEventListener("click", async () => {
   renderProviderSettings();
+  renderToolPermissions();
   settingsDialog.showModal();
   await loadProviderModels();
   await loadConfig();
@@ -1036,6 +1091,7 @@ toolTypeSelect.addEventListener("change", renderToolTypeFields);
 settingsForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   saveProviderSettings();
+  saveToolPermissions();
   await saveConfig();
 });
 

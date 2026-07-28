@@ -31,6 +31,25 @@ const CONTENT_TYPES = {
 const WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const MAX_WEBSOCKET_TEXT_BYTES = 40 * 1024 * 1024;
 const providerSettings = new Map();
+const toolPermissions = new Map();
+
+const DEFAULT_TOOL_PERMISSIONS = {
+  list_files: true,
+  read_file: false,
+  write_file: false,
+  search_files: true,
+  curl: true,
+  run_command: true,
+};
+
+function normalizeToolPermissions(value = {}) {
+  return Object.fromEntries(
+    Object.entries(DEFAULT_TOOL_PERMISSIONS).map(([name, defaultValue]) => [
+      name,
+      typeof value[name] === "boolean" ? value[name] : defaultValue,
+    ]),
+  );
+}
 
 function normalizeProvider(value) {
   if (value === "ollama" || value === "custom") return value;
@@ -375,7 +394,9 @@ async function createAgentSession(socket, sessionId, streamStates) {
       : process.env.OPENAI_API_KEY,
     baseUrl: settings.baseUrl || defaultBaseUrl(provider),
   });
-  const localTools = createTools({ root, approve });
+  const permissions = normalizeToolPermissions(toolPermissions.get(socket));
+  const localTools = createTools({ root, approve })
+    .filter((tool) => permissions[tool.name] === true);
   const mcpTools = await loadMcpTools({ root, approve, onInfo });
   return new CodingAgent({
     client,
@@ -475,6 +496,18 @@ function handleWebSocket(socket, req) {
           });
           continue;
         }
+        if (payload.type === "tool_permissions") {
+          const permissions = normalizeToolPermissions(payload.permissions);
+          toolPermissions.set(socket, permissions);
+          agentPromises.clear();
+          streamStates.clear();
+          sendJson(socket, {
+            type: "tool_permissions",
+            ok: true,
+            permissions,
+          });
+          continue;
+        }
         if (payload.type === "reload_tools") {
           agentPromises.clear();
           streamStates.clear();
@@ -536,7 +569,10 @@ function handleWebSocket(socket, req) {
     customBaseUrl: process.env.CUSTOM_AI_BASE_URL || "http://localhost:8000/v1",
     approveAll: process.env.AI_HARNESS_WEB_APPROVE === "true",
   });
-  socket.on("close", () => providerSettings.delete(socket));
+  socket.on("close", () => {
+    providerSettings.delete(socket);
+    toolPermissions.delete(socket);
+  });
 }
 
 const server = http.createServer(async (req, res) => {

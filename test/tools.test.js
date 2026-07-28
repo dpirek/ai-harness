@@ -24,3 +24,12 @@ test("file tools stay inside the workspace", async () => {
     end_line: null,
   }), /outside the workspace/);
 });
+
+test("curl tool only allows HTTP URLs", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "ai-harness-"));
+  const tools = createTools({ root, approve: async () => true });
+  const curl = tools.find((tool) => tool.name === "curl");
+
+  assert.ok(curl);
+  await assert.rejects(() => curl.execute({ url: "file:///etc/passwd" }), /only allows/);
+});
