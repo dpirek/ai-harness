@@ -160,3 +160,29 @@ test("agent reports MCP calls returned by the API", async () => {
   assert.equal(await agent.run("search docs"), "Done.");
   assert.deepEqual(messages, ["Using MCP server docs.search."]);
 });
+
+test("agent emits run events for web streaming", async () => {
+  const events = [];
+  const client = {
+    async createResponse() {
+      return { id: "resp_1", output_text: "Done." };
+    },
+  };
+  const agent = new CodingAgent({
+    client,
+    tools: [],
+    model: "test-model",
+    root: "/workspace",
+    onEvent(event) {
+      events.push(event);
+    },
+  });
+
+  assert.equal(await agent.run("hello"), "Done.");
+  assert.deepEqual(events, [
+    { type: "start", prompt: "hello" },
+    { type: "turn", turn: 1 },
+    { type: "response", id: "resp_1" },
+    { type: "final", text: "Done." },
+  ]);
+});

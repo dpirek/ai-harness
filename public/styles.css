@@ -1,0 +1,859 @@
+:root {
+  color-scheme: dark;
+  --bg: #000000;
+  --sidebar: #050505;
+  --sidebar-line: #191919;
+  --surface: #202020;
+  --surface-hover: #2c2c2c;
+  --bubble: #303030;
+  --text: #ececec;
+  --muted: #9b9b9b;
+  --faint: #6f6f6f;
+  --line: #303030;
+  --accent: #ffffff;
+  --danger: #ff7066;
+  --stream-width: 360px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  min-width: 320px;
+  margin: 0;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+}
+
+button,
+textarea {
+  font: inherit;
+}
+
+button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+code {
+  color: #d8d8d8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.9em;
+}
+
+.app {
+  display: grid;
+  grid-template-columns: 344px minmax(360px, 1fr) 8px var(--stream-width);
+  height: 100vh;
+  background: var(--bg);
+}
+
+.app.sidebar-collapsed {
+  grid-template-columns: 76px minmax(360px, 1fr) 8px var(--stream-width);
+}
+
+.sidebar {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  border-right: 1px solid var(--sidebar-line);
+  background: var(--sidebar);
+  color: #e8e8e8;
+  transition: width 160ms ease;
+}
+
+.sidebarTop {
+  display: flex;
+  min-height: 68px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 18px 20px 12px;
+}
+
+.brand {
+  font-size: 1.32rem;
+  font-weight: 750;
+  letter-spacing: 0;
+}
+
+.brand span {
+  color: var(--muted);
+}
+
+.sidebarToggle {
+  display: inline-grid;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  place-items: center;
+  border-radius: 8px;
+  color: #dcdcdc;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.sidebarToggle:hover {
+  background: var(--surface-hover);
+}
+
+.sidebarActions,
+.chatActions,
+.messageActions,
+.streamHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.iconButton,
+.composerIcon,
+.sendButton {
+  display: inline-grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 999px;
+  color: #dedede;
+  font-size: 1.12rem;
+  line-height: 1;
+}
+
+.iconButton:hover,
+.composerIcon:hover,
+.modeButton:hover,
+.messageActions button:hover {
+  background: var(--surface-hover);
+}
+
+.navList,
+.sidebarSection {
+  display: grid;
+  gap: 3px;
+  padding: 8px 8px 0;
+}
+
+.navList button,
+.sidebarSection button {
+  display: flex;
+  min-height: 42px;
+  width: 100%;
+  align-items: center;
+  gap: 12px;
+  overflow: hidden;
+  border-radius: 8px;
+  padding: 0 12px;
+  color: #e2e2e2;
+  font-size: 1rem;
+  text-align: left;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.navList button:hover,
+.sidebarSection button:hover,
+.sidebarSection button.active {
+  background: #1d1d1d;
+}
+
+.navIcon {
+  display: inline-grid;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  place-items: center;
+  border-radius: 6px;
+  color: #f1f1f1;
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.recentIcon {
+  border: 1px solid #333;
+  color: #bdbdbd;
+  font-size: 0.95rem;
+}
+
+.navLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebarSection {
+  margin-top: 26px;
+}
+
+.sidebarSection h2 {
+  margin: 0 0 8px;
+  padding: 0 12px;
+  color: #f3f3f3;
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+
+.recents {
+  min-height: 0;
+  overflow: auto;
+  padding-bottom: 18px;
+}
+
+.recentsList {
+  display: grid;
+  gap: 3px;
+}
+
+.recents button,
+.recentsList button {
+  min-height: 40px;
+  display: flex;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.emptyRecents {
+  margin: 0;
+  padding: 8px 12px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.account {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  margin-top: auto;
+  border-top: 1px solid var(--sidebar-line);
+  padding: 14px 20px;
+}
+
+.avatar {
+  display: inline-grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 999px;
+  background: #2a2a2a;
+  color: white;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.account strong,
+.account span {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.account span {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.app.sidebar-collapsed .sidebarTop {
+  min-height: 82px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 10px;
+}
+
+.app.sidebar-collapsed .brand {
+  font-size: 1rem;
+}
+
+.app.sidebar-collapsed .brand span,
+.app.sidebar-collapsed .navList .navLabel,
+.app.sidebar-collapsed .sidebarSection h2,
+.app.sidebar-collapsed .accountMeta {
+  display: none;
+}
+
+.app.sidebar-collapsed .navList,
+.app.sidebar-collapsed .sidebarSection {
+  padding: 8px 10px 0;
+  justify-items: center;
+}
+
+.app.sidebar-collapsed .sidebarSection {
+  margin-top: 18px;
+}
+
+.app.sidebar-collapsed .navList button,
+.app.sidebar-collapsed .sidebarSection button {
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  justify-content: center;
+  gap: 0;
+  border: 1px solid #202020;
+  border-radius: 10px;
+  padding: 0;
+}
+
+.app.sidebar-collapsed .navIcon {
+  width: 30px;
+  height: 30px;
+}
+
+.app.sidebar-collapsed .recentsList .navLabel {
+  display: block;
+  width: 30px;
+  overflow: hidden;
+  color: #d9d9d9;
+  font-size: 0.72rem;
+  font-weight: 750;
+  text-align: center;
+  text-overflow: clip;
+}
+
+.app.sidebar-collapsed .recents {
+  padding-bottom: 12px;
+}
+
+.app.sidebar-collapsed .account {
+  display: flex;
+  justify-content: center;
+  padding: 14px 10px;
+}
+
+.chat {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  background: #000;
+}
+
+.chatTopbar {
+  position: absolute;
+  z-index: 4;
+  top: 18px;
+  right: 20px;
+  left: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.chatActions,
+.state,
+.resetFab {
+  pointer-events: auto;
+}
+
+.state {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 11px;
+  background: rgba(20, 20, 20, 0.84);
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.state-online {
+  color: #88d8c6;
+}
+
+.state-pending {
+  color: #f5cf77;
+}
+
+.state-error {
+  color: var(--danger);
+}
+
+.textButton {
+  min-height: 36px;
+  border-radius: 999px;
+  padding: 0 10px;
+  color: #e8e8e8;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.textButton:hover {
+  background: var(--surface-hover);
+}
+
+.messages {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 92px clamp(22px, 12vw, 180px) 190px;
+}
+
+.emptyState {
+  width: min(680px, 100%);
+  margin: 34vh auto 0;
+  color: var(--muted);
+  font-size: 1.1rem;
+  text-align: center;
+}
+
+.message {
+  width: min(760px, 100%);
+  margin: 0 auto 26px;
+  color: var(--text);
+}
+
+.message p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 1.05rem;
+  line-height: 1.55;
+}
+
+.message-user {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.message-user p {
+  max-width: min(520px, 82%);
+  border-radius: 999px;
+  background: var(--bubble);
+  padding: 14px 22px;
+  line-height: 1.35;
+}
+
+.message-agent p {
+  max-width: 720px;
+}
+
+.messageActions {
+  margin-top: 18px;
+}
+
+.messageActions button {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 6px;
+  color: #b9b9b9;
+  font-size: 1.02rem;
+}
+
+.composerWrap {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 5;
+  display: grid;
+  justify-items: center;
+  gap: 18px;
+  padding: 0 22px 18px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0), #000 34%);
+}
+
+.notice {
+  margin: 0;
+  color: #8b8b8b;
+  font-size: 0.88rem;
+  text-align: center;
+}
+
+.composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  align-items: center;
+  gap: 10px;
+  width: min(1020px, 100%);
+  min-height: 68px;
+  border: 1px solid #292929;
+  border-radius: 36px;
+  background: #242424;
+  padding: 12px 12px 12px 24px;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.composer:focus-within {
+  border-color: #3a3a3a;
+  background: #262626;
+}
+
+textarea {
+  width: 100%;
+  height: 26px;
+  max-height: 168px;
+  min-height: 26px;
+  resize: none;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #f0f0f0;
+  padding: 0;
+  overflow-y: hidden;
+  font-size: 1.08rem;
+  line-height: 1.45;
+  caret-color: #ffffff;
+}
+
+textarea::placeholder {
+  color: #b7b7b7;
+}
+
+textarea:disabled {
+  color: #888;
+}
+
+.modeButton {
+  min-height: 36px;
+  border-radius: 999px;
+  padding: 0 10px;
+  color: #bdbdbd;
+  white-space: nowrap;
+}
+
+.sendButton {
+  width: 44px;
+  height: 44px;
+  background: #f3f3f3;
+  color: #171717;
+  font-size: 1.4rem;
+  font-weight: 900;
+}
+
+.resetFab {
+  position: absolute;
+  right: 24px;
+  bottom: 104px;
+  z-index: 6;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(20, 20, 20, 0.88);
+  padding: 0 12px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.resetFab:hover {
+  color: var(--text);
+  border-color: #555;
+}
+
+.streamColumn {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  background: #050505;
+  color: var(--text);
+}
+
+.streamResizeHandle {
+  position: relative;
+  z-index: 8;
+  min-width: 8px;
+  cursor: col-resize;
+  background: #000;
+}
+
+.streamResizeHandle::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 1px;
+  background: var(--sidebar-line);
+}
+
+.streamResizeHandle:hover::before,
+.streamResizeHandle:focus-visible::before,
+.app.resizing-stream .streamResizeHandle::before {
+  left: 2px;
+  width: 3px;
+  background: #555;
+}
+
+.streamResizeHandle:focus-visible {
+  outline: 0;
+}
+
+.app.resizing-stream,
+.app.resizing-stream * {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.streamHeader {
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line);
+  padding: 18px 16px;
+  color: var(--muted);
+}
+
+.streamHeader h2 {
+  margin: 0;
+  color: #f1f1f1;
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.streamHeader span {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.82rem;
+}
+
+.streamHeader button {
+  min-height: 34px;
+  border: 1px solid #2f2f2f;
+  border-radius: 999px;
+  background: #151515;
+  padding: 0 12px;
+  color: var(--text);
+  font-size: 0.82rem;
+}
+
+.streamHeader button:hover {
+  background: #242424;
+  border-color: #444;
+}
+
+.settingsDialog {
+  width: min(840px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  border: 1px solid #2f2f2f;
+  border-radius: 12px;
+  background: #141414;
+  color: var(--text);
+  padding: 0;
+}
+
+.settingsDialog::backdrop {
+  background: rgba(0, 0, 0, 0.68);
+}
+
+.settingsPanel {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.settingsHeader,
+.settingsFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.settingsHeader h2 {
+  margin: 0;
+  font-size: 1.12rem;
+}
+
+.settingsHeader p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.settingsTemplates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.settingsTemplates button,
+.settingsFooter button {
+  min-height: 36px;
+  border: 1px solid #333;
+  border-radius: 999px;
+  background: #1f1f1f;
+  padding: 0 13px;
+  color: #e6e6e6;
+  font-size: 0.9rem;
+}
+
+.settingsTemplates button:hover,
+.settingsFooter button:hover {
+  background: #2a2a2a;
+  border-color: #4a4a4a;
+}
+
+.settingsFooter .primaryButton {
+  background: #f0f0f0;
+  color: #151515;
+  font-weight: 750;
+}
+
+.configInput {
+  width: 100%;
+  min-height: 420px;
+  max-height: min(56vh, 620px);
+  border: 1px solid #303030;
+  border-radius: 8px;
+  background: #080808;
+  color: #ececec;
+  padding: 14px;
+  overflow: auto;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.9rem;
+  line-height: 1.48;
+}
+
+.configInput:focus {
+  border-color: #555;
+}
+
+.configStatus {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.configStatus[data-state="success"] {
+  color: #88d8c6;
+}
+
+.configStatus[data-state="error"] {
+  color: var(--danger);
+}
+
+.eventList {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 8px 16px 18px;
+  overflow: auto;
+  list-style: none;
+}
+
+.eventList li {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr);
+  gap: 7px 8px;
+  border-bottom: 1px solid #222;
+  padding: 9px 0;
+}
+
+.eventList time {
+  color: var(--faint);
+  font-size: 0.76rem;
+}
+
+.eventList span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #d9d9d9;
+  font-size: 0.82rem;
+}
+
+.eventList pre {
+  grid-column: 2;
+  max-height: 180px;
+  margin: 0;
+  overflow: auto;
+  border-radius: 6px;
+  background: #080808;
+  padding: 8px;
+  color: #bdbdbd;
+  font-size: 0.76rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 900px) {
+  .app {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) 320px;
+    overflow: auto;
+  }
+
+  .sidebar {
+    display: none;
+  }
+
+  .chatTopbar {
+    top: 12px;
+    right: 12px;
+    left: 12px;
+  }
+
+  .messages {
+    padding: 82px 18px 178px;
+  }
+
+  .message-user p {
+    max-width: 88%;
+  }
+
+  .composer {
+    grid-template-columns: minmax(0, 1fr) 42px;
+    min-height: 64px;
+    padding-left: 18px;
+  }
+
+  .modeButton {
+    display: none;
+  }
+
+  .streamResizeHandle {
+    display: none;
+  }
+
+  .streamColumn {
+    min-height: 320px;
+    border-top: 1px solid var(--sidebar-line);
+    border-left: 0;
+  }
+
+  .settingsHeader,
+  .settingsFooter {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .settingsFooter div {
+    display: flex;
+    width: 100%;
+    gap: 8px;
+  }
+
+  .settingsFooter button {
+    flex: 1;
+  }
+
+  .configInput {
+    min-height: 320px;
+  }
+
+  .resetFab {
+    right: 14px;
+  }
+}

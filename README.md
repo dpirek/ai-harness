@@ -30,6 +30,19 @@ Interactive mode:
 node index.js
 ```
 
+Web interface:
+
+```sh
+npm run web
+```
+
+Then open `http://localhost:3000`. Set `PORT` to choose a different port.
+The browser uses `/ws` to stream model turns, tool calls, approval decisions,
+and final answers. By default, file writes and shell commands are denied from
+the web UI because there is no interactive terminal approval prompt. Set
+`AI_HARNESS_WEB_APPROVE=true` only when you want the web server to approve those
+mutating tool calls automatically.
+
 Single task:
 
 ```sh

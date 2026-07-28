@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AI Harness</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/styles.css">
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <div id="appShell" class="app">
+      <aside class="sidebar" aria-label="Conversation navigation">
+        <header class="sidebarTop">
+          <div class="brand">AI <span>Harness</span></div>
+          <button
+            id="sidebarToggleButton"
+            class="sidebarToggle"
+            type="button"
+            aria-label="Collapse sidebar"
+            aria-pressed="false"
+            title="Collapse sidebar"
+          >☰</button>
+        </header>
+
+        <nav class="navList" aria-label="Main">
+          <button id="newChatButton" type="button" title="New chat">
+            <span class="navIcon">✎</span><span class="navLabel">New chat</span>
+          </button>
+          <button id="settingsButton" type="button" title="Settings">
+            <span class="navIcon">⚙</span><span class="navLabel">Settings</span>
+          </button>
+          <!--
+          <button type="button"><span class="navIcon">◎</span>Plugins</button>
+          <button type="button"><span class="navIcon">▥</span>Library</button>
+          <button type="button"><span class="navIcon">▭</span>Projects</button>
+          <button type="button"><span class="navIcon">◷</span>Scheduled</button>
+          <button type="button"><span class="navIcon">◎</span>Plugins</button>
+          <button type="button"><span class="navIcon">…</span>More</button> -->
+        </nav>
+
+        <section class="sidebarSection recents" aria-label="Recent conversations">
+          <h2>Recents</h2>
+          <div id="recentsList" class="recentsList"></div>
+        </section>
+
+        <footer class="account">
+          <span class="avatar"></span>
+          <div class="accountMeta">
+            <strong>User Name</strong>
+            <span id="workspaceMeta">Connecting...</span>
+          </div>
+        </footer>
+      </aside>
+
+      <main class="chat">
+        <header class="chatTopbar">
+          <span id="socketState" class="state state-idle">Offline</span>
+        </header>
+
+        <section id="messages" class="messages" aria-live="polite">
+          <div id="emptyState" class="emptyState">Ask the harness to inspect, edit, or explain this workspace.</div>
+        </section>
+
+        <footer class="composerWrap">
+          <p class="notice">AI Harness can make mistakes. Check important changes.</p>
+          <form id="promptForm" class="composer">
+            <textarea
+              id="promptInput"
+              name="prompt"
+              rows="1"
+              placeholder="Ask AI Harness"
+              required
+            ></textarea>
+            <button id="sendButton" class="sendButton" type="submit" aria-label="Send">↑</button>
+          </form>
+        </footer>
+
+        <button id="resetButton" class="resetFab" type="button">Reset</button>
+      </main>
+
+      <div
+        id="streamResizeHandle"
+        class="streamResizeHandle"
+        role="separator"
+        aria-label="Resize stream column"
+        aria-orientation="vertical"
+        tabindex="0"
+      ></div>
+
+      <aside class="streamColumn" aria-label="Live interaction stream">
+        <div class="streamHeader">
+          <div>
+            <h2>Stream</h2>
+            <span>Live interactions</span>
+          </div>
+          <button id="clearEventsButton" type="button">Clear</button>
+        </div>
+        <ol id="eventList" class="eventList"></ol>
+      </aside>
+
+      <dialog id="settingsDialog" class="settingsDialog">
+        <form id="settingsForm" class="settingsPanel" method="dialog">
+          <header class="settingsHeader">
+            <div>
+              <h2>Settings</h2>
+              <p>Edit <code>.ai-harness/config.toml</code></p>
+            </div>
+            <button id="closeSettingsButton" class="iconButton" type="button" aria-label="Close settings">×</button>
+          </header>
+
+          <div class="settingsTemplates" aria-label="Config templates">
+            <button id="remoteTemplateButton" type="button">Remote MCP</button>
+            <button id="stdioTemplateButton" type="button">Local stdio MCP</button>
+            <button id="autoApproveTemplateButton" type="button">Auto approve MCP</button>
+          </div>
+
+          <textarea
+            id="configInput"
+            class="configInput"
+            spellcheck="false"
+            placeholder="# .ai-harness/config.toml"
+          ></textarea>
+
+          <footer class="settingsFooter">
+            <span id="configStatus" class="configStatus">Not loaded</span>
+            <div>
+              <button id="reloadConfigButton" type="button">Reload</button>
+              <button id="saveConfigButton" class="primaryButton" type="submit">Save</button>
+            </div>
+          </footer>
+        </form>
+      </dialog>
+    </div>
+  </body>
+</html>
