@@ -90,6 +90,66 @@ async function handleConfigApi(req, res) {
   res.end();
 }
 
+async function handleModelsApi(req, res) {
+  if (req.method !== "POST") {
+    res.writeHead(405, { allow: "POST" });
+    res.end();
+    return;
+  }
+
+  try {
+    const body = JSON.parse(await readRequestBody(req, 20_000) || "{}");
+    const provider = body.provider === "ollama" ? "ollama" : "openai";
+    const baseUrl = String(body.baseUrl || "").trim();
+
+    if (provider === "ollama") {
+      const origin = (baseUrl || process.env.OLLAMA_BASE_URL || "http://localhost:11434").replace(/\/$/, "");
+      const response = await fetch(`${origin}/api/tags`);
+      const text = await response.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error(`Ollama returned invalid JSON (HTTP ${response.status}): ${text}`);
+      }
+      if (!response.ok) throw new Error(`Ollama API error (HTTP ${response.status}): ${data.error || text}`);
+      const models = (data.models || [])
+        .map((model) => model.model || model.name)
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b));
+      json(res, 200, { ok: true, provider, models });
+      return;
+    }
+
+    if (!process.env.OPENAI_API_KEY) {
+      json(res, 400, { ok: false, error: "OPENAI_API_KEY is required to list OpenAI models." });
+      return;
+    }
+    const origin = (baseUrl || process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
+    const response = await fetch(`${origin}/models`, {
+      headers: { authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+    });
+    const text = await response.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error(`OpenAI returned invalid JSON (HTTP ${response.status}): ${text}`);
+    }
+    if (!response.ok) {
+      const message = data.error?.message || JSON.stringify(data);
+      throw new Error(`OpenAI API error (HTTP ${response.status}): ${message}`);
+    }
+    const models = (data.data || [])
+      .map((model) => model.id)
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b));
+    json(res, 200, { ok: true, provider, models });
+  } catch (error) {
+    json(res, 400, { ok: false, error: error.message });
+  }
+}
+
 function resolvePublicPath(urlPath) {
   const decoded = decodeURIComponent(urlPath);
   const target = decoded === "/" ? "/index.html" : decoded;
@@ -474,6 +534,10 @@ const server = http.createServer(async (req, res) => {
   }
   if (url.pathname === "/api/config") {
     await handleConfigApi(req, res);
+    return;
+  }
+  if (url.pathname === "/api/models") {
+    await handleModelsApi(req, res);
     return;
   }
   await serveStatic(req, res);

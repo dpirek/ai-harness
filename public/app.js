@@ -40,6 +40,8 @@ const toolsStatus = document.querySelector("#toolsStatus");
 const providerSelect = document.querySelector("#providerSelect");
 const providerModelInput = document.querySelector("#providerModelInput");
 const providerBaseUrlInput = document.querySelector("#providerBaseUrlInput");
+const refreshModelsButton = document.querySelector("#refreshModelsButton");
+const providerModelsStatus = document.querySelector("#providerModelsStatus");
 const appShell = document.querySelector("#appShell");
 const sidebarToggleButton = document.querySelector("#sidebarToggleButton");
 const streamResizeHandle = document.querySelector("#streamResizeHandle");
@@ -521,14 +523,60 @@ function saveProviderSettings() {
   workspaceMeta.textContent = `${settings.provider} · ${settings.model || "default model"}`;
 }
 
+function defaultModelForProvider(provider) {
+  return provider === "ollama" ? "llama3.1" : "gpt-5.1-codex";
+}
+
+function setProviderModelsStatus(message, state = "") {
+  providerModelsStatus.textContent = message;
+  providerModelsStatus.dataset.state = state;
+}
+
+function setModelOptions(models, selectedModel) {
+  const selected = selectedModel || defaultModelForProvider(providerSelect.value);
+  providerModelInput.replaceChildren();
+  const uniqueModels = [...new Set([selected, ...models].filter(Boolean))];
+  for (const model of uniqueModels) {
+    const option = document.createElement("option");
+    option.value = model;
+    option.textContent = model;
+    providerModelInput.append(option);
+  }
+  providerModelInput.value = selected;
+}
+
 function renderProviderSettings(settings = loadProviderSettings()) {
   providerSelect.value = settings.provider === "ollama" ? "ollama" : "openai";
-  providerModelInput.value = settings.model || "";
+  setModelOptions([], settings.model || defaultModelForProvider(providerSelect.value));
   providerBaseUrlInput.value = settings.baseUrl || "";
-  providerModelInput.placeholder = providerSelect.value === "ollama" ? "llama3.1" : "gpt-5.1-codex";
   providerBaseUrlInput.placeholder = providerSelect.value === "ollama"
     ? "http://localhost:11434"
     : "https://api.openai.com/v1";
+}
+
+async function loadProviderModels() {
+  const current = currentProviderSettings();
+  setProviderModelsStatus("Loading models...");
+  refreshModelsButton.disabled = true;
+  try {
+    const response = await fetch("/api/models", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        provider: current.provider,
+        baseUrl: current.baseUrl,
+      }),
+    });
+    const payload = await response.json();
+    if (!payload.ok) throw new Error(payload.error || "Unable to load models.");
+    setModelOptions(payload.models || [], current.model);
+    setProviderModelsStatus(`${payload.models.length} model${payload.models.length === 1 ? "" : "s"} loaded`, "success");
+  } catch (error) {
+    setModelOptions([], current.model || defaultModelForProvider(current.provider));
+    setProviderModelsStatus(error.message, "error");
+  } finally {
+    refreshModelsButton.disabled = false;
+  }
 }
 
 function setConfigStatus(message, state = "") {
@@ -948,7 +996,9 @@ window.addEventListener("resize", () => {
 });
 
 settingsButton.addEventListener("click", async () => {
+  renderProviderSettings();
   settingsDialog.showModal();
+  await loadProviderModels();
   await loadConfig();
 });
 
@@ -967,6 +1017,7 @@ closeToolsButton.addEventListener("click", () => {
 });
 
 reloadConfigButton.addEventListener("click", loadConfig);
+refreshModelsButton.addEventListener("click", loadProviderModels);
 reloadToolsButton.addEventListener("click", loadTools);
 toolTypeSelect.addEventListener("change", renderToolTypeFields);
 
@@ -981,16 +1032,17 @@ toolsForm.addEventListener("submit", async (event) => {
   await addTool();
 });
 
-providerSelect.addEventListener("change", () => {
+providerSelect.addEventListener("change", async () => {
   const nextProvider = providerSelect.value;
-  if (!providerModelInput.value || ["gpt-5.1-codex", "llama3.1"].includes(providerModelInput.value)) {
-    providerModelInput.value = nextProvider === "ollama" ? "llama3.1" : "gpt-5.1-codex";
-  }
   if (!providerBaseUrlInput.value || /api\.openai\.com|localhost:11434/.test(providerBaseUrlInput.value)) {
     providerBaseUrlInput.value = nextProvider === "ollama" ? "http://localhost:11434" : "";
   }
+  setModelOptions([], defaultModelForProvider(nextProvider));
   renderProviderSettings(currentProviderSettings());
+  await loadProviderModels();
 });
+
+providerBaseUrlInput.addEventListener("change", loadProviderModels);
 
 remoteTemplateButton.addEventListener("click", () => {
   appendConfigTemplate(CONFIG_TEMPLATES.remote);

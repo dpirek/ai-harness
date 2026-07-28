@@ -807,6 +807,44 @@ textarea:disabled {
   border-color: #555;
 }
 
+.providerModelActions {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.providerModelActions button {
+  min-height: 34px;
+  border: 1px solid #333;
+  border-radius: 999px;
+  background: #1f1f1f;
+  padding: 0 12px;
+  color: #e6e6e6;
+  font-size: 0.86rem;
+}
+
+.providerModelActions button:hover {
+  background: #2a2a2a;
+  border-color: #4a4a4a;
+}
+
+.providerModelActions span {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  text-align: right;
+}
+
+.providerModelActions span[data-state="success"] {
+  color: #88d8c6;
+}
+
+.providerModelActions span[data-state="error"] {
+  color: var(--danger);
+}
+
 .toolsAddPanel {
   display: grid;
   grid-template-columns: 140px minmax(120px, 1fr) minmax(220px, 1.4fr);

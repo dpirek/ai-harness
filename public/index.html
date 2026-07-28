@@ -125,12 +125,16 @@
             </label>
             <label>
               <span>Model</span>
-              <input id="providerModelInput" type="text" placeholder="gpt-5.1-codex">
+              <select id="providerModelInput"></select>
             </label>
             <label>
               <span>Base URL</span>
               <input id="providerBaseUrlInput" type="url" placeholder="http://localhost:11434">
             </label>
+            <div class="providerModelActions">
+              <button id="refreshModelsButton" type="button">Refresh models</button>
+              <span id="providerModelsStatus">Models not loaded</span>
+            </div>
           </section>
 
           <div class="settingsTemplates" aria-label="Config templates">
