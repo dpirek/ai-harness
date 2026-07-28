@@ -31,7 +31,16 @@ OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=llama3.1
 ```
 
-The web Settings panel can also switch between OpenAI and Ollama. Provider
+For a custom OpenAI-compatible server:
+
+```env
+AI_PROVIDER=custom
+CUSTOM_AI_BASE_URL=http://localhost:8000/v1
+CUSTOM_AI_MODEL=custom-model
+CUSTOM_AI_API_KEY=optional_bearer_token
+```
+
+The web Settings panel can also switch between OpenAI, Ollama, and Custom. Provider
 changes apply to new in-memory agent sessions; active browser chat history is
 sent back as context after refresh.
 

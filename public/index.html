@@ -124,6 +124,7 @@
               <select id="providerSelect">
                 <option value="openai">OpenAI</option>
                 <option value="ollama">Ollama</option>
+                <option value="custom">Custom</option>
               </select>
             </label>
             <label>
@@ -133,6 +134,10 @@
             <label>
               <span>Base URL</span>
               <input id="providerBaseUrlInput" type="url" placeholder="http://localhost:11434">
+            </label>
+            <label id="providerApiKeyField">
+              <span>API key</span>
+              <input id="providerApiKeyInput" type="password" autocomplete="off" placeholder="Optional bearer token">
             </label>
             <div class="providerModelActions">
               <button id="refreshModelsButton" type="button">Refresh models</button>

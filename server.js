@@ -32,6 +32,23 @@ const WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const MAX_WEBSOCKET_TEXT_BYTES = 40 * 1024 * 1024;
 const providerSettings = new Map();
 
+function normalizeProvider(value) {
+  if (value === "ollama" || value === "custom") return value;
+  return "openai";
+}
+
+function defaultModel(provider) {
+  if (provider === "ollama") return process.env.OLLAMA_MODEL || "llama3.1";
+  if (provider === "custom") return process.env.CUSTOM_AI_MODEL || "custom-model";
+  return process.env.OPENAI_MODEL || "gpt-5.1-codex";
+}
+
+function defaultBaseUrl(provider) {
+  if (provider === "ollama") return process.env.OLLAMA_BASE_URL || "http://localhost:11434";
+  if (provider === "custom") return process.env.CUSTOM_AI_BASE_URL || "http://localhost:8000/v1";
+  return process.env.OPENAI_BASE_URL || "";
+}
+
 function json(res, status, payload) {
   const body = JSON.stringify(payload);
   res.writeHead(status, {
@@ -100,8 +117,9 @@ async function handleModelsApi(req, res) {
 
   try {
     const body = JSON.parse(await readRequestBody(req, 20_000) || "{}");
-    const provider = body.provider === "ollama" ? "ollama" : "openai";
+    const provider = normalizeProvider(body.provider);
     const baseUrl = String(body.baseUrl || "").trim();
+    const apiKey = String(body.apiKey || "").trim();
 
     if (provider === "ollama") {
       const origin = (baseUrl || process.env.OLLAMA_BASE_URL || "http://localhost:11434").replace(/\/$/, "");
@@ -122,24 +140,29 @@ async function handleModelsApi(req, res) {
       return;
     }
 
-    if (!process.env.OPENAI_API_KEY) {
+    const origin = (baseUrl || defaultBaseUrl(provider) || "https://api.openai.com/v1").replace(/\/$/, "");
+    const bearer = provider === "custom"
+      ? apiKey || process.env.CUSTOM_AI_API_KEY || ""
+      : process.env.OPENAI_API_KEY || "";
+    if (provider === "openai" && !bearer) {
       json(res, 400, { ok: false, error: "OPENAI_API_KEY is required to list OpenAI models." });
       return;
     }
-    const origin = (baseUrl || process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
+    const headers = {};
+    if (bearer) headers.authorization = `Bearer ${bearer}`;
     const response = await fetch(`${origin}/models`, {
-      headers: { authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+      headers,
     });
     const text = await response.text();
     let data;
     try {
       data = JSON.parse(text);
     } catch {
-      throw new Error(`OpenAI returned invalid JSON (HTTP ${response.status}): ${text}`);
+      throw new Error(`${provider === "custom" ? "Custom provider" : "OpenAI"} returned invalid JSON (HTTP ${response.status}): ${text}`);
     }
     if (!response.ok) {
       const message = data.error?.message || JSON.stringify(data);
-      throw new Error(`OpenAI API error (HTTP ${response.status}): ${message}`);
+      throw new Error(`${provider === "custom" ? "Custom provider" : "OpenAI"} API error (HTTP ${response.status}): ${message}`);
     }
     const models = (data.data || [])
       .map((model) => model.id)
@@ -319,12 +342,10 @@ function requestImages(payload) {
 async function createAgentSession(socket, sessionId, streamStates) {
   const root = process.cwd();
   const settings = providerSettings.get(socket) || {};
-  const provider = settings.provider || process.env.AI_PROVIDER || "openai";
+  const provider = normalizeProvider(settings.provider || process.env.AI_PROVIDER);
   const model = settings.model ||
     process.env.AI_MODEL ||
-    (provider === "ollama"
-      ? process.env.OLLAMA_MODEL || "llama3.1"
-      : process.env.OPENAI_MODEL || "gpt-5.1-codex");
+    defaultModel(provider);
   const approveAll = process.env.AI_HARNESS_WEB_APPROVE === "true";
   const approve = async (description) => {
     sendJson(socket, { type: "approval", description, approved: approveAll });
@@ -349,9 +370,10 @@ async function createAgentSession(socket, sessionId, streamStates) {
 
   const client = createModelClient({
     provider,
-    apiKey: process.env.OPENAI_API_KEY,
-    baseUrl: settings.baseUrl ||
-      (provider === "ollama" ? process.env.OLLAMA_BASE_URL : process.env.OPENAI_BASE_URL),
+    apiKey: provider === "custom"
+      ? settings.apiKey || process.env.CUSTOM_AI_API_KEY || ""
+      : process.env.OPENAI_API_KEY,
+    baseUrl: settings.baseUrl || defaultBaseUrl(provider),
   });
   const localTools = createTools({ root, approve });
   const mcpTools = await loadMcpTools({ root, approve, onInfo });
@@ -432,13 +454,15 @@ function handleWebSocket(socket, req) {
           ? payload.sessionId.slice(0, 120)
           : "default";
         if (payload.type === "provider_settings") {
-          const provider = payload.provider === "ollama" ? "ollama" : "openai";
+          const provider = normalizeProvider(payload.provider);
           const model = typeof payload.model === "string" ? payload.model.trim() : "";
           const baseUrl = typeof payload.baseUrl === "string" ? payload.baseUrl.trim() : "";
+          const apiKey = typeof payload.apiKey === "string" ? payload.apiKey.trim() : "";
           providerSettings.set(socket, {
             provider,
             model,
             baseUrl,
+            apiKey,
           });
           agentPromises.clear();
           streamStates.clear();
@@ -446,8 +470,8 @@ function handleWebSocket(socket, req) {
             type: "provider_settings",
             ok: true,
             provider,
-            model: model || (provider === "ollama" ? "llama3.1" : "gpt-5.1-codex"),
-            baseUrl: baseUrl || (provider === "ollama" ? "http://localhost:11434" : ""),
+            model: model || defaultModel(provider),
+            baseUrl: baseUrl || defaultBaseUrl(provider),
           });
           continue;
         }
@@ -503,14 +527,13 @@ function handleWebSocket(socket, req) {
   });
 
   socket.on("error", () => {});
+  const envProvider = normalizeProvider(process.env.AI_PROVIDER);
   sendJson(socket, {
     type: "ready",
-    provider: process.env.AI_PROVIDER || "openai",
-    model: process.env.AI_MODEL ||
-      (process.env.AI_PROVIDER === "ollama"
-        ? process.env.OLLAMA_MODEL || "llama3.1"
-        : process.env.OPENAI_MODEL || "gpt-5.1-codex"),
+    provider: envProvider,
+    model: process.env.AI_MODEL || defaultModel(envProvider),
     ollamaBaseUrl: process.env.OLLAMA_BASE_URL || "http://localhost:11434",
+    customBaseUrl: process.env.CUSTOM_AI_BASE_URL || "http://localhost:8000/v1",
     approveAll: process.env.AI_HARNESS_WEB_APPROVE === "true",
   });
   socket.on("close", () => providerSettings.delete(socket));
@@ -519,15 +542,15 @@ function handleWebSocket(socket, req) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
   if (url.pathname === "/api/health") {
+    const envProvider = normalizeProvider(process.env.AI_PROVIDER);
     json(res, 200, {
       ok: true,
-      provider: process.env.AI_PROVIDER || "openai",
-      model: process.env.AI_MODEL ||
-        (process.env.AI_PROVIDER === "ollama"
-          ? process.env.OLLAMA_MODEL || "llama3.1"
-          : process.env.OPENAI_MODEL || "gpt-5.1-codex"),
+      provider: envProvider,
+      model: process.env.AI_MODEL || defaultModel(envProvider),
       ollamaModel: process.env.OLLAMA_MODEL || "llama3.1",
       ollamaBaseUrl: process.env.OLLAMA_BASE_URL || "http://localhost:11434",
+      customModel: process.env.CUSTOM_AI_MODEL || "custom-model",
+      customBaseUrl: process.env.CUSTOM_AI_BASE_URL || "http://localhost:8000/v1",
       hasApiKey: Boolean(process.env.OPENAI_API_KEY),
       approveAll: process.env.AI_HARNESS_WEB_APPROVE === "true",
     });

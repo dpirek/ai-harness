@@ -109,8 +109,12 @@ async function main() {
 
   const client = createModelClient({
     provider,
-    apiKey,
-    baseUrl: provider === "ollama" ? process.env.OLLAMA_BASE_URL : process.env.OPENAI_BASE_URL,
+    apiKey: provider === "custom" ? process.env.CUSTOM_AI_API_KEY || "" : apiKey,
+    baseUrl: provider === "ollama"
+      ? process.env.OLLAMA_BASE_URL
+      : provider === "custom"
+        ? process.env.CUSTOM_AI_BASE_URL
+        : process.env.OPENAI_BASE_URL,
   });
   const printInfo = (message) => {
     stdout.write(`${colors.dim}info: ${message}${colors.reset}\n`);
@@ -135,7 +139,9 @@ async function main() {
       process.env.AI_MODEL ||
       (provider === "ollama"
         ? process.env.OLLAMA_MODEL || "llama3.1"
-        : process.env.OPENAI_MODEL || "gpt-5.1-codex"),
+        : provider === "custom"
+          ? process.env.CUSTOM_AI_MODEL || "custom-model"
+          : process.env.OPENAI_MODEL || "gpt-5.1-codex"),
     root,
     approve,
     onInfo: printInfo,

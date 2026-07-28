@@ -788,7 +788,7 @@ textarea:disabled {
 
 .providerSettings {
   display: grid;
-  grid-template-columns: 150px minmax(160px, 1fr) minmax(220px, 1.2fr);
+  grid-template-columns: 130px minmax(160px, 1fr) minmax(220px, 1.2fr) minmax(180px, 1fr);
   gap: 10px;
 }
 

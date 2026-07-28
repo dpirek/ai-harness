@@ -40,6 +40,8 @@ const toolsStatus = document.querySelector("#toolsStatus");
 const providerSelect = document.querySelector("#providerSelect");
 const providerModelInput = document.querySelector("#providerModelInput");
 const providerBaseUrlInput = document.querySelector("#providerBaseUrlInput");
+const providerApiKeyInput = document.querySelector("#providerApiKeyInput");
+const providerApiKeyField = document.querySelector("#providerApiKeyField");
 const refreshModelsButton = document.querySelector("#refreshModelsButton");
 const providerModelsStatus = document.querySelector("#providerModelsStatus");
 const appShell = document.querySelector("#appShell");
@@ -496,6 +498,7 @@ function defaultProviderSettings() {
     provider: "openai",
     model: "gpt-5.1-codex",
     baseUrl: "",
+    apiKey: "",
   };
 }
 
@@ -513,6 +516,7 @@ function currentProviderSettings() {
     provider: providerSelect.value,
     model: providerModelInput.value.trim(),
     baseUrl: providerBaseUrlInput.value.trim(),
+    apiKey: providerApiKeyInput.value.trim(),
   };
 }
 
@@ -524,6 +528,7 @@ function saveProviderSettings() {
 }
 
 function defaultModelForProvider(provider) {
+  if (provider === "custom") return "custom-model";
   return provider === "ollama" ? "llama3.1" : "gpt-5.1-codex";
 }
 
@@ -546,12 +551,18 @@ function setModelOptions(models, selectedModel) {
 }
 
 function renderProviderSettings(settings = loadProviderSettings()) {
-  providerSelect.value = settings.provider === "ollama" ? "ollama" : "openai";
+  providerSelect.value = ["openai", "ollama", "custom"].includes(settings.provider)
+    ? settings.provider
+    : "openai";
   setModelOptions([], settings.model || defaultModelForProvider(providerSelect.value));
   providerBaseUrlInput.value = settings.baseUrl || "";
+  providerApiKeyInput.value = settings.apiKey || "";
   providerBaseUrlInput.placeholder = providerSelect.value === "ollama"
     ? "http://localhost:11434"
-    : "https://api.openai.com/v1";
+    : providerSelect.value === "custom"
+      ? "http://localhost:8000/v1"
+      : "https://api.openai.com/v1";
+  providerApiKeyField.hidden = providerSelect.value === "ollama";
 }
 
 async function loadProviderModels() {
@@ -565,6 +576,7 @@ async function loadProviderModels() {
       body: JSON.stringify({
         provider: current.provider,
         baseUrl: current.baseUrl,
+        apiKey: current.apiKey,
       }),
     });
     const payload = await response.json();
@@ -1035,7 +1047,11 @@ toolsForm.addEventListener("submit", async (event) => {
 providerSelect.addEventListener("change", async () => {
   const nextProvider = providerSelect.value;
   if (!providerBaseUrlInput.value || /api\.openai\.com|localhost:11434/.test(providerBaseUrlInput.value)) {
-    providerBaseUrlInput.value = nextProvider === "ollama" ? "http://localhost:11434" : "";
+    providerBaseUrlInput.value = nextProvider === "ollama"
+      ? "http://localhost:11434"
+      : nextProvider === "custom"
+        ? "http://localhost:8000/v1"
+        : "";
   }
   setModelOptions([], defaultModelForProvider(nextProvider));
   renderProviderSettings(currentProviderSettings());
