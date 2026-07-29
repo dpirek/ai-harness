@@ -170,32 +170,51 @@
           <section class="toolPermissions" aria-label="Local tool permissions">
             <div class="toolPermissionsHeader">
               <h3>Allowed Tool Calls</h3>
-              <p>Choose which built-in workspace tools the model can call.</p>
+              <p>Enable only the built-in tools this chat model may call.</p>
             </div>
-            <label>
-              <input type="checkbox" data-tool-permission="list_files">
-              <span>List files</span>
-            </label>
-            <label>
-              <input type="checkbox" data-tool-permission="search_files">
-              <span>Search files</span>
-            </label>
-            <label>
-              <input type="checkbox" data-tool-permission="read_file">
-              <span>Read files</span>
-            </label>
-            <label>
-              <input type="checkbox" data-tool-permission="write_file">
-              <span>Write files</span>
-            </label>
-            <label>
-              <input type="checkbox" data-tool-permission="curl">
-              <span>Curl</span>
-            </label>
-            <label>
-              <input type="checkbox" data-tool-permission="run_command">
-              <span>Run commands</span>
-            </label>
+            <div class="toolTableWrap">
+              <table class="toolTable">
+                <thead>
+                  <tr>
+                    <th scope="col">Tool</th>
+                    <th scope="col">Description</th>
+                    <th scope="col">Enabled</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <th scope="row">List files</th>
+                    <td>List files and folders inside the workspace.</td>
+                    <td><input type="checkbox" data-tool-permission="list_files" aria-label="Enable list files"></td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Search files</th>
+                    <td>Search workspace text files with a regular expression.</td>
+                    <td><input type="checkbox" data-tool-permission="search_files" aria-label="Enable search files"></td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Read files</th>
+                    <td>Read selected UTF-8 file contents from the workspace.</td>
+                    <td><input type="checkbox" data-tool-permission="read_file" aria-label="Enable read files"></td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Write files</th>
+                    <td>Create or replace UTF-8 files after approval.</td>
+                    <td><input type="checkbox" data-tool-permission="write_file" aria-label="Enable write files"></td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Curl</th>
+                    <td>Fetch HTTP or HTTPS URLs for API and web inspection.</td>
+                    <td><input type="checkbox" data-tool-permission="curl" aria-label="Enable curl"></td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Run commands</th>
+                    <td>Run shell commands in the workspace after approval.</td>
+                    <td><input type="checkbox" data-tool-permission="run_command" aria-label="Enable run commands"></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </section>
 
           <footer class="settingsFooter">
