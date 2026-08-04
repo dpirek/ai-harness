@@ -33,3 +33,21 @@ test("curl tool only allows HTTP URLs", async () => {
   assert.ok(curl);
   await assert.rejects(() => curl.execute({ url: "file:///etc/passwd" }), /only allows/);
 });
+
+test("run_command is approval-gated and runs in the configured workspace", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "agent-command-test-"));
+  const deniedTools = createTools({ root, approve: async () => false });
+  const denied = await deniedTools.find((tool) => tool.name === "run_command").execute({
+    command: "pwd",
+    timeout_ms: null,
+  });
+  assert.deepEqual(denied, { ok: false, error: "User denied command." });
+
+  const allowedTools = createTools({ root, approve: async () => true });
+  const result = await allowedTools.find((tool) => tool.name === "run_command").execute({
+    command: "pwd && ls",
+    timeout_ms: null,
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.stdout.trim(), await fs.realpath(root));
+});

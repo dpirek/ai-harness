@@ -378,9 +378,35 @@ code {
 }
 
 .chatActions,
+.workspacePicker,
 .state,
 .resetFab {
   pointer-events: auto;
+}
+
+.workspacePicker {
+  display: flex;
+  width: min(520px, 62%);
+  min-height: 32px;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 12px;
+  background: rgba(20, 20, 20, 0.9);
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.workspacePicker input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #eee;
+  font: 500 0.82rem ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 .state {

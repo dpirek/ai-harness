@@ -65,6 +65,10 @@
       <main class="chat">
         <header class="chatTopbar">
           <span id="socketState" class="state state-idle">Offline</span>
+          <label class="workspacePicker" title="This chat can only access files inside this directory">
+            <span>Workspace</span>
+            <input id="workspaceInput" type="text" spellcheck="false" autocomplete="off" aria-label="Workspace directory">
+          </label>
         </header>
 
         <section id="messages" class="messages" aria-live="polite">
@@ -170,7 +174,7 @@
           <section class="toolPermissions" aria-label="Local tool permissions">
             <div class="toolPermissionsHeader">
               <h3>Allowed Tool Calls</h3>
-              <p>Enable only the built-in tools this chat model may call.</p>
+              <p>Enabled tools are authorized to run without an additional prompt.</p>
             </div>
             <div class="toolTableWrap">
               <table class="toolTable">
@@ -199,7 +203,7 @@
                   </tr>
                   <tr>
                     <th scope="row">Write files</th>
-                    <td>Create or replace UTF-8 files after approval.</td>
+                    <td>Create or replace UTF-8 files in the workspace.</td>
                     <td><input type="checkbox" data-tool-permission="write_file" aria-label="Enable write files"></td>
                   </tr>
                   <tr>
@@ -209,7 +213,7 @@
                   </tr>
                   <tr>
                     <th scope="row">Run commands</th>
-                    <td>Run shell commands in the workspace after approval.</td>
+                    <td>Run shell commands in the workspace.</td>
                     <td><input type="checkbox" data-tool-permission="run_command" aria-label="Enable run commands"></td>
                   </tr>
                 </tbody>

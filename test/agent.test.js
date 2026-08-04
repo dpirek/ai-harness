@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CodingAgent, extractText, promptContent } from "../lib/agent.js";
-import { OllamaClient, OpenAIClient } from "../lib/openai.js";
+import {
+  CodingAgent,
+  environmentInstructions,
+  extractText,
+  promptContent,
+} from "../lib/agent.js";
+import { OllamaClient, OpenAIClient, parseTaggedToolCalls } from "../lib/openai.js";
 
 test("extractText reads message output", () => {
   assert.equal(
@@ -13,6 +18,23 @@ test("extractText reads message output", () => {
     }),
     "done",
   );
+});
+
+test("environment instructions identify the workspace and enabled tools", () => {
+  const instructions = environmentInstructions("/workspace/project", [
+    { name: "list_files", description: "List workspace files." },
+    { name: "write_file", description: "Create a workspace file." },
+    { name: "run_command", description: "Run a workspace command." },
+  ]);
+
+  assert.match(instructions, /Workspace root: \/workspace\/project/);
+  assert.match(instructions, /current working directory and the root of the repository/);
+  assert.match(instructions, /file tools to inspect and modify files in this workspace/);
+  assert.match(instructions, /All file reads and writes must stay inside this workspace/);
+  assert.match(instructions, /- list_files: List workspace files/);
+  assert.match(instructions, /- write_file: Create a workspace file/);
+  assert.match(instructions, /approval gate\s+does not mean the tool is unavailable/);
+  assert.match(instructions, /Never claim that you lack file or command access/);
 });
 
 test("agent executes a function call and returns final text", async () => {
@@ -254,6 +276,65 @@ test("ollama client adapts chat tool calls to response function calls", async ()
     call_id: "call_1",
     arguments: '{"value":"hello"}',
   }]);
+});
+
+test("ollama client recognizes tagged textual tool calls", async () => {
+  const client = new OllamaClient({
+    baseUrl: "http://ollama.test",
+    async fetchImpl() {
+      return {
+        ok: true,
+        status: 200,
+        async text() {
+          return JSON.stringify({
+            message: {
+              role: "assistant",
+              content: `<function=run_command>
+<parameter=command>
+pwd && ls -la test.txt
+</parameter>
+<parameter=timeout_ms>
+1000
+</parameter>
+</function>
+</tool_call>`,
+            },
+          });
+        },
+      };
+    },
+  });
+
+  const response = await client.createResponse({
+    model: "local-model",
+    instructions: "Use tools.",
+    input: [{ role: "user", content: [{ type: "input_text", text: "inspect files" }] }],
+    tools: [{
+      type: "function",
+      name: "run_command",
+      description: "Run a command.",
+      parameters: {
+        type: "object",
+        properties: {
+          command: { type: "string" },
+          timeout_ms: { type: ["integer", "null"] },
+        },
+      },
+    }],
+  });
+
+  assert.deepEqual(response.output, [{
+    type: "function_call",
+    name: "run_command",
+    call_id: "call_1",
+    arguments: '{"command":"pwd && ls -la test.txt","timeout_ms":1000}',
+  }]);
+});
+
+test("tagged tool parser leaves unknown tool markup as text", () => {
+  const result = parseTaggedToolCalls("<function=unknown></function>", []);
+  assert.deepEqual(result.calls, []);
+  assert.equal(result.content, "<function=unknown></function>");
 });
 
 test("ollama client retries without tools for models that do not support them", async () => {

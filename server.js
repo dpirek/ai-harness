@@ -35,8 +35,8 @@ const toolPermissions = new Map();
 
 const DEFAULT_TOOL_PERMISSIONS = {
   list_files: true,
-  read_file: false,
-  write_file: false,
+  read_file: true,
+  write_file: true,
   search_files: true,
   curl: true,
   run_command: true,
@@ -358,17 +358,46 @@ function requestImages(payload) {
     }));
 }
 
-async function createAgentSession(socket, sessionId, streamStates) {
-  const root = process.cwd();
+async function resolveWorkspace(requested) {
+  if (typeof requested !== "string" || !requested.trim()) {
+    throw new Error("Select a workspace before sending a prompt.");
+  }
+  if (requested.length > 4096) throw new Error("Workspace path is too long.");
+  const root = path.resolve(process.cwd(), requested.trim());
+  const stat = await fs.stat(root);
+  if (!stat.isDirectory()) throw new Error(`Workspace is not a directory: ${requested}`);
+  return fs.realpath(root);
+}
+
+async function createAgentSession(socket, sessionId, streamStates, root, pendingApprovals) {
   const settings = providerSettings.get(socket) || {};
   const provider = normalizeProvider(settings.provider || process.env.AI_PROVIDER);
   const model = settings.model ||
     process.env.AI_MODEL ||
     defaultModel(provider);
   const approveAll = process.env.AI_HARNESS_WEB_APPROVE === "true";
-  const approve = async (description) => {
-    sendJson(socket, { type: "approval", description, approved: approveAll });
-    return approveAll;
+  const approveMcp = async (description) => {
+    if (approveAll) {
+      sendJson(socket, { type: "approval", description, approved: true });
+      return true;
+    }
+
+    const requestId = crypto.randomUUID();
+    sendJson(socket, { type: "approval_request", requestId, description });
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        pendingApprovals.delete(requestId);
+        sendJson(socket, { type: "approval", description, approved: false, reason: "timed out" });
+        resolve(false);
+      }, 120_000);
+      pendingApprovals.set(requestId, {
+        description,
+        resolve(approved) {
+          clearTimeout(timeout);
+          resolve(approved);
+        },
+      });
+    });
   };
   const onInfo = (message) => sendJson(socket, { type: "info", message });
   const onTool = ({ name, args }) => sendJson(socket, { type: "tool", name, args });
@@ -395,15 +424,17 @@ async function createAgentSession(socket, sessionId, streamStates) {
     baseUrl: settings.baseUrl || defaultBaseUrl(provider),
   });
   const permissions = normalizeToolPermissions(toolPermissions.get(socket));
-  const localTools = createTools({ root, approve })
+  // Enabling a built-in tool in the web Tools settings is the user's
+  // authorization to execute it. Disabled tools are not exposed to the model.
+  const localTools = createTools({ root, approve: async () => true })
     .filter((tool) => permissions[tool.name] === true);
-  const mcpTools = await loadMcpTools({ root, approve, onInfo });
+  const mcpTools = await loadMcpTools({ root, approve: approveMcp, onInfo });
   return new CodingAgent({
     client,
     tools: [...localTools, ...mcpTools],
     model,
     root,
-    approve,
+    approve: approveMcp,
     onInfo,
     onTool,
     onEvent,
@@ -431,8 +462,9 @@ function handleWebSocket(socket, req) {
 
   let frameBuffer = Buffer.alloc(0);
   let textFragments = [];
-  const agentPromises = new Map();
+  const agentSessions = new Map();
   const streamStates = new Map();
+  const pendingApprovals = new Map();
   let running = false;
 
   socket.on("data", async (chunk) => {
@@ -474,6 +506,20 @@ function handleWebSocket(socket, req) {
         const sessionId = typeof payload.sessionId === "string" && payload.sessionId
           ? payload.sessionId.slice(0, 120)
           : "default";
+        if (payload.type === "approval_response") {
+          const pending = pendingApprovals.get(payload.requestId);
+          if (pending) {
+            pendingApprovals.delete(payload.requestId);
+            const approved = payload.approved === true;
+            pending.resolve(approved);
+            sendJson(socket, {
+              type: "approval",
+              description: pending.description,
+              approved,
+            });
+          }
+          continue;
+        }
         if (payload.type === "provider_settings") {
           const provider = normalizeProvider(payload.provider);
           const model = typeof payload.model === "string" ? payload.model.trim() : "";
@@ -485,7 +531,7 @@ function handleWebSocket(socket, req) {
             baseUrl,
             apiKey,
           });
-          agentPromises.clear();
+          agentSessions.clear();
           streamStates.clear();
           sendJson(socket, {
             type: "provider_settings",
@@ -499,7 +545,7 @@ function handleWebSocket(socket, req) {
         if (payload.type === "tool_permissions") {
           const permissions = normalizeToolPermissions(payload.permissions);
           toolPermissions.set(socket, permissions);
-          agentPromises.clear();
+          agentSessions.clear();
           streamStates.clear();
           sendJson(socket, {
             type: "tool_permissions",
@@ -509,13 +555,14 @@ function handleWebSocket(socket, req) {
           continue;
         }
         if (payload.type === "reload_tools") {
-          agentPromises.clear();
+          agentSessions.clear();
           streamStates.clear();
           sendJson(socket, { type: "reload_tools", ok: true });
           continue;
         }
         if (payload.type === "reset") {
-          const agent = await agentPromises.get(sessionId);
+          const entry = agentSessions.get(sessionId);
+          const agent = entry ? await entry.promise : null;
           agent?.reset();
           sendJson(socket, { type: "reset", sessionId });
           continue;
@@ -531,11 +578,17 @@ function handleWebSocket(socket, req) {
 
         running = true;
         try {
-          const hasExistingAgent = agentPromises.has(sessionId);
+          const root = await resolveWorkspace(payload.workspace);
+          let entry = agentSessions.get(sessionId);
+          const hasExistingAgent = entry?.root === root;
           if (!hasExistingAgent) {
-            agentPromises.set(sessionId, createAgentSession(socket, sessionId, streamStates));
+            entry = {
+              root,
+              promise: createAgentSession(socket, sessionId, streamStates, root, pendingApprovals),
+            };
+            agentSessions.set(sessionId, entry);
           }
-          const agent = await agentPromises.get(sessionId);
+          const agent = await entry.promise;
           const prompt = hasExistingAgent
             ? payload.prompt
             : promptWithHistory(payload.prompt, payload.history);
@@ -559,7 +612,12 @@ function handleWebSocket(socket, req) {
     }
   });
 
-  socket.on("error", () => {});
+  const denyPendingApprovals = () => {
+    for (const pending of pendingApprovals.values()) pending.resolve(false);
+    pendingApprovals.clear();
+  };
+  socket.on("error", denyPendingApprovals);
+  socket.on("close", denyPendingApprovals);
   const envProvider = normalizeProvider(process.env.AI_PROVIDER);
   sendJson(socket, {
     type: "ready",
@@ -589,6 +647,7 @@ const server = http.createServer(async (req, res) => {
       customBaseUrl: process.env.CUSTOM_AI_BASE_URL || "http://localhost:8000/v1",
       hasApiKey: Boolean(process.env.OPENAI_API_KEY),
       approveAll: process.env.AI_HARNESS_WEB_APPROVE === "true",
+      workspace: process.cwd(),
     });
     return;
   }

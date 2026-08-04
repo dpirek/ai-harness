@@ -1,5 +1,6 @@
 const socketState = document.querySelector("#socketState");
 const workspaceMeta = document.querySelector("#workspaceMeta");
+const workspaceInput = document.querySelector("#workspaceInput");
 const messages = document.querySelector("#messages");
 const eventList = document.querySelector("#eventList");
 const promptForm = document.querySelector("#promptForm");
@@ -64,6 +65,7 @@ let promptHistoryIndex = null;
 let promptHistoryDraft = "";
 let streamingAnswer = null;
 let attachedImages = [];
+let defaultWorkspace = ".";
 
 const STORAGE_KEY = "ai-harness.sessions";
 const SIDEBAR_STORAGE_KEY = "ai-harness.sidebarCollapsed";
@@ -74,8 +76,8 @@ const MIN_STREAM_WIDTH = 260;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const DEFAULT_TOOL_PERMISSIONS = {
   list_files: true,
-  read_file: false,
-  write_file: false,
+  read_file: true,
+  write_file: true,
   search_files: true,
   curl: true,
   run_command: true,
@@ -111,6 +113,7 @@ function createSession(title = "New chat") {
     id: crypto.randomUUID(),
     title,
     messages: [],
+    workspace: defaultWorkspace,
     updatedAt: Date.now(),
   };
 }
@@ -118,7 +121,9 @@ function createSession(title = "New chat") {
 function loadSessions() {
   try {
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-    if (Array.isArray(stored) && stored.length > 0) return stored;
+    if (Array.isArray(stored) && stored.length > 0) {
+      return stored.map((session) => ({ ...session, workspace: session.workspace || defaultWorkspace }));
+    }
   } catch {
     localStorage.removeItem(STORAGE_KEY);
   }
@@ -192,6 +197,26 @@ function saveSessions() {
 
 function activeSession() {
   return sessions.find((session) => session.id === activeSessionId);
+}
+
+function renderWorkspace() {
+  workspaceInput.value = activeSession()?.workspace || defaultWorkspace;
+}
+
+function saveActiveWorkspace() {
+  const session = activeSession();
+  if (!session) return;
+  const workspace = workspaceInput.value.trim();
+  if (!workspace) {
+    workspaceInput.value = session.workspace || defaultWorkspace;
+    return;
+  }
+  if (workspace === session.workspace) return;
+  session.workspace = workspace;
+  session.updatedAt = Date.now();
+  saveSessions();
+  send({ type: "reset", sessionId: session.id });
+  addEvent("Workspace selected", workspace);
 }
 
 function titleFromPrompt(prompt) {
@@ -324,6 +349,7 @@ function setBusy(value) {
   runActive = value;
   sendButton.disabled = value || socket?.readyState !== WebSocket.OPEN;
   promptInput.disabled = value;
+  workspaceInput.disabled = value;
 }
 
 function scrollToEnd(element) {
@@ -420,6 +446,7 @@ function renderRecents() {
       activeSessionId = session.id;
       renderRecents();
       renderMessages();
+      renderWorkspace();
       addEvent("Opened recent chat", session.title);
     });
     recentsList.append(button);
@@ -434,6 +461,7 @@ function startNewChat() {
   saveSessions();
   renderRecents();
   renderMessages();
+  renderWorkspace();
   eventList.replaceChildren();
   addEvent("New chat started");
 }
@@ -876,6 +904,16 @@ async function loadHealth() {
   try {
     const response = await fetch("/api/health");
     const health = await response.json();
+    defaultWorkspace = health.workspace || ".";
+    let changed = false;
+    for (const session of sessions) {
+      if (!session.workspace || session.workspace === ".") {
+        session.workspace = defaultWorkspace;
+        changed = true;
+      }
+    }
+    if (changed) saveSessions();
+    renderWorkspace();
     const settings = loadProviderSettings();
     workspaceMeta.textContent = `${settings.provider || health.provider} · ${settings.model || health.model}`;
   } catch {
@@ -942,8 +980,19 @@ function connect() {
       addEvent(`Tool call: ${payload.name}`, payload.args);
       return;
     }
+    if (payload.type === "approval_request") {
+      addEvent("Approval requested", payload.description);
+      const approved = window.confirm(`Allow this tool action?\n\n${payload.description}`);
+      send({
+        type: "approval_response",
+        requestId: payload.requestId,
+        description: payload.description,
+        approved,
+      });
+      return;
+    }
     if (payload.type === "approval") {
-      addEvent(`Approval ${payload.approved ? "auto-approved" : "denied"}`, payload.description);
+      addEvent(`Approval ${payload.approved ? "accepted" : "denied"}`, payload.description);
       return;
     }
     if (payload.type === "agent_event") {
@@ -1008,7 +1057,23 @@ promptForm.addEventListener("submit", (event) => {
   resizePromptInput();
   setBusy(true);
   pendingSessionId = sessionId;
-  send({ type: "prompt", prompt: displayPrompt, sessionId, history, images });
+  send({
+    type: "prompt",
+    prompt: displayPrompt,
+    sessionId,
+    history,
+    images,
+    workspace: session?.workspace || defaultWorkspace,
+  });
+});
+
+workspaceInput.addEventListener("change", saveActiveWorkspace);
+workspaceInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    workspaceInput.blur();
+    promptInput.focus();
+  }
 });
 
 addImageButton.addEventListener("click", () => {
@@ -1167,4 +1232,5 @@ loadSidebarState();
 loadStreamWidth();
 renderRecents();
 renderMessages();
+renderWorkspace();
 resizePromptInput();

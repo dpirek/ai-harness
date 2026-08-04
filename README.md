@@ -50,6 +50,12 @@ on or off by commenting/uncommenting their TOML block. Local stdio MCP tools are
 available to OpenAI and Ollama; remote MCP server definitions are passed through
 to providers that support hosted MCP tool calls.
 
+The built-in Tools panel also controls each local capability independently. Workspace
+listing, reading, writing, searching, HTTP fetches, and commands are enabled by default. Enable
+**Run commands** to expose `run_command` for workspace commands such as `ls`, builds,
+and tests; disable it to remove that tool from the model entirely. An enabled built-in
+tool is authorized for that browser session and does not show a second approval prompt.
+
 ## Run
 
 Interactive mode:
@@ -66,10 +72,12 @@ npm run web
 
 Then open `http://localhost:3000`. Set `PORT` to choose a different port.
 The browser uses `/ws` to stream model turns, tool calls, approval decisions,
-and final answers. By default, file writes and shell commands are denied from
-the web UI because there is no interactive terminal approval prompt. Set
-`AI_HARNESS_WEB_APPROVE=true` only when you want the web server to approve those
-mutating tool calls automatically.
+and final answers. Each browser chat stores its own workspace directory; local
+file tools and commands for that chat are rooted there and reject paths outside
+it. The web Tools settings authorize enabled built-in file and command operations.
+MCP calls retain their separately configured approval behavior; set
+`AI_HARNESS_WEB_APPROVE=true` to automatically approve MCP calls that reach the
+web approval callback.
 
 Single task:
 
