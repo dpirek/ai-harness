@@ -472,6 +472,54 @@ code {
   line-height: 1.55;
 }
 
+.messageBody {
+  min-width: 0;
+}
+
+.messageBody > * + * {
+  margin-top: 14px;
+}
+
+.codeBlock {
+  overflow: hidden;
+  border: 1px solid #30343b;
+  border-radius: 10px;
+  background: #111318;
+}
+
+.codeLanguage {
+  border-bottom: 1px solid #292d34;
+  background: #191c22;
+  padding: 7px 12px;
+  color: #9299a6;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.codeBlock pre {
+  margin: 0;
+  padding: 16px;
+  overflow-x: auto;
+  line-height: 1.55;
+  tab-size: 2;
+}
+
+.codeBlock code {
+  color: #d7dae0;
+  font-size: 0.9rem;
+  white-space: pre;
+}
+
+.syntax-comment { color: #7f8996; font-style: italic; }
+.syntax-keyword { color: #c792ea; }
+.syntax-string { color: #c3e88d; }
+.syntax-number { color: #f78c6c; }
+.syntax-tag { color: #f07178; }
+.syntax-property { color: #82aaff; }
+.syntax-operator { color: #89ddff; }
+
 .message-user {
   display: flex;
   flex-direction: column;
@@ -479,12 +527,18 @@ code {
   justify-content: flex-end;
 }
 
-.message-user p {
+.message-user .messageBody {
   max-width: min(520px, 82%);
   border-radius: 999px;
   background: var(--bubble);
   padding: 14px 22px;
   line-height: 1.35;
+}
+
+.message-user .messageBody:has(.codeBlock) {
+  width: min(760px, 100%);
+  max-width: 100%;
+  border-radius: 16px;
 }
 
 .messageImages {

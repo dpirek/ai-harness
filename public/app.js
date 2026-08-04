@@ -1,3 +1,14 @@
+import { appendMessageText } from "./lib/message-rendering.js";
+import {
+  defaultProviderSettings,
+  loadProviderSettings,
+  loadToolPermissions,
+  normalizeToolPermissions,
+  saveStoredProviderSettings,
+  saveStoredToolPermissions,
+} from "./lib/settings.js";
+import { CONFIG_TEMPLATES, mcpBlocks, quoteToml, setToolBlockEnabled } from "./lib/mcp-config.js";
+
 const socketState = document.querySelector("#socketState");
 const workspaceMeta = document.querySelector("#workspaceMeta");
 const workspaceInput = document.querySelector("#workspaceInput");
@@ -70,41 +81,8 @@ let defaultWorkspace = ".";
 const STORAGE_KEY = "ai-harness.sessions";
 const SIDEBAR_STORAGE_KEY = "ai-harness.sidebarCollapsed";
 const STREAM_WIDTH_STORAGE_KEY = "ai-harness.streamWidth";
-const PROVIDER_STORAGE_KEY = "ai-harness.providerSettings";
-const TOOL_PERMISSIONS_STORAGE_KEY = "ai-harness.toolPermissions";
 const MIN_STREAM_WIDTH = 260;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
-const DEFAULT_TOOL_PERMISSIONS = {
-  list_files: true,
-  read_file: true,
-  write_file: true,
-  search_files: true,
-  curl: true,
-  run_command: true,
-};
-const CONFIG_TEMPLATES = {
-  remote: `
-[[mcp.servers]]
-server_label = "docs"
-server_url = "https://example.com/mcp"
-allowed_tools = ["search"]
-require_approval = "always"
-
-[mcp.servers.headers]
-Authorization = "Bearer \${MCP_TOKEN}"
-`,
-  stdio: `
-[mcp_servers.local]
-command = "node"
-args = ["/absolute/path/to/server.js"]
-cwd = "/absolute/path/to/server"
-message_format = "content-length"
-`,
-  autoApprove: `
-[mcp]
-auto_approve = true
-`,
-};
 
 let toolsConfigContent = "";
 
@@ -373,8 +351,9 @@ function renderMessage(role, text, images = []) {
     article.append(gallery);
   }
 
-  const body = document.createElement("p");
-  body.textContent = text;
+  const body = document.createElement("div");
+  body.className = "messageBody";
+  appendMessageText(body, text);
 
   article.append(body);
   messages.append(article);
@@ -520,24 +499,6 @@ function send(payload) {
   }
 }
 
-function defaultProviderSettings() {
-  return {
-    provider: "openai",
-    model: "gpt-5.1-codex",
-    baseUrl: "",
-    apiKey: "",
-  };
-}
-
-function loadProviderSettings() {
-  try {
-    return { ...defaultProviderSettings(), ...JSON.parse(localStorage.getItem(PROVIDER_STORAGE_KEY) || "{}") };
-  } catch {
-    localStorage.removeItem(PROVIDER_STORAGE_KEY);
-    return defaultProviderSettings();
-  }
-}
-
 function currentProviderSettings() {
   return {
     provider: providerSelect.value,
@@ -549,29 +510,11 @@ function currentProviderSettings() {
 
 function saveProviderSettings() {
   const settings = currentProviderSettings();
-  localStorage.setItem(PROVIDER_STORAGE_KEY, JSON.stringify(settings));
+  saveStoredProviderSettings(settings);
   send({ type: "provider_settings", ...settings });
   workspaceMeta.textContent = `${settings.provider} · ${settings.model || "default model"}`;
   settingsStatus.textContent = "Provider settings saved";
   settingsStatus.dataset.state = "success";
-}
-
-function normalizeToolPermissions(value = {}) {
-  return Object.fromEntries(
-    Object.entries(DEFAULT_TOOL_PERMISSIONS).map(([name, defaultValue]) => [
-      name,
-      typeof value[name] === "boolean" ? value[name] : defaultValue,
-    ]),
-  );
-}
-
-function loadToolPermissions() {
-  try {
-    return normalizeToolPermissions(JSON.parse(localStorage.getItem(TOOL_PERMISSIONS_STORAGE_KEY) || "{}"));
-  } catch {
-    localStorage.removeItem(TOOL_PERMISSIONS_STORAGE_KEY);
-    return normalizeToolPermissions();
-  }
 }
 
 function currentToolPermissions() {
@@ -591,7 +534,7 @@ function renderToolPermissions(settings = loadToolPermissions()) {
 
 function saveToolPermissions() {
   const permissions = currentToolPermissions();
-  localStorage.setItem(TOOL_PERMISSIONS_STORAGE_KEY, JSON.stringify(permissions));
+  saveStoredToolPermissions(permissions);
   send({ type: "tool_permissions", permissions });
   toolPermissionsStatus.textContent = "Tool permissions saved";
   toolPermissionsStatus.dataset.state = "success";
@@ -719,58 +662,6 @@ async function saveConfigContent(content) {
   send({ type: "reload_tools" });
   configInput.value = content;
   return payload;
-}
-
-function stripTomlComment(line) {
-  return line.replace(/^\s*#\s?/, "");
-}
-
-function mcpBlocks(content) {
-  const lines = content.split("\n");
-  const headerPattern = /^\s*(#\s*)?(\[\[mcp\.servers\]\]|\[mcp_servers\.([A-Za-z0-9_-]+)\])\s*$/;
-  const starts = [];
-  lines.forEach((line, index) => {
-    const match = line.match(headerPattern);
-    if (match) starts.push({ index, match });
-  });
-
-  return starts.map((start, listIndex) => {
-    const end = starts[listIndex + 1]?.index ?? lines.length;
-    const blockLines = lines.slice(start.index, end);
-    const uncommented = blockLines.map(stripTomlComment).join("\n");
-    const isRemote = start.match[2] === "[[mcp.servers]]";
-    const label = isRemote
-      ? uncommented.match(/server_label\s*=\s*"([^"]+)"/)?.[1] || "remote"
-      : start.match[3];
-    return {
-      index: listIndex,
-      start: start.index,
-      end,
-      enabled: !start.match[1],
-      type: isRemote ? "remote" : "stdio",
-      label,
-      detail: isRemote
-        ? uncommented.match(/server_url\s*=\s*"([^"]+)"/)?.[1] ||
-          uncommented.match(/connector_id\s*=\s*"([^"]+)"/)?.[1] ||
-          "remote MCP server"
-        : uncommented.match(/command\s*=\s*"([^"]+)"/)?.[1] || "stdio MCP server",
-    };
-  });
-}
-
-function setToolBlockEnabled(content, block, enabled) {
-  const lines = content.split("\n");
-  const changed = lines.slice(block.start, block.end).map((line) => {
-    if (!line.trim()) return line;
-    if (enabled) return line.replace(/^(\s*)#\s?/, "$1");
-    return /^\s*#/.test(line) ? line : `# ${line}`;
-  });
-  lines.splice(block.start, block.end - block.start, ...changed);
-  return lines.join("\n");
-}
-
-function quoteToml(value) {
-  return String(value || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
 function toolSnippet() {
