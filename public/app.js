@@ -469,8 +469,32 @@ function describeAgentEvent(event) {
   return event.type;
 }
 
+function eventIcon(title) {
+  const value = title.toLowerCase();
+  if (value.includes("error") || value.includes("failed") || value.includes("denied")) return "!";
+  if (value.includes("tool") || value.includes("command")) return "⌘";
+  if (value.includes("approval")) return "✓";
+  if (value.includes("response") || value.includes("answer")) return "↳";
+  if (value.includes("prompt") || value.includes("message")) return "→";
+  if (value.includes("model") || value.includes("provider")) return "◇";
+  if (value.includes("socket") || value.includes("connected")) return "●";
+  if (value.includes("config") || value.includes("workspace")) return "⚙";
+  return "·";
+}
+
 function addEvent(title, detail) {
   const item = document.createElement("li");
+  const disclosure = document.createElement("details");
+  const summary = document.createElement("summary");
+  const icon = document.createElement("span");
+  icon.className = "eventIcon";
+  icon.textContent = eventIcon(title);
+  icon.setAttribute("aria-hidden", "true");
+
+  const heading = document.createElement("span");
+  heading.className = "eventTitle";
+  heading.textContent = title;
+
   const stamp = document.createElement("time");
   stamp.dateTime = new Date().toISOString();
   stamp.textContent = new Date().toLocaleTimeString([], {
@@ -479,15 +503,16 @@ function addEvent(title, detail) {
     second: "2-digit",
   });
 
-  const heading = document.createElement("span");
-  heading.textContent = title;
+  const chevron = document.createElement("span");
+  chevron.className = "eventChevron";
+  chevron.textContent = "›";
+  chevron.setAttribute("aria-hidden", "true");
+  summary.append(icon, heading, stamp, chevron);
 
-  item.append(stamp, heading);
-  if (detail !== undefined) {
-    const pre = document.createElement("pre");
-    pre.textContent = typeof detail === "string" ? detail : formatJson(detail);
-    item.append(pre);
-  }
+  const pre = document.createElement("pre");
+  pre.textContent = formatJson({ type: title, ...(detail !== undefined ? { detail } : {}) });
+  disclosure.append(summary, pre);
+  item.append(disclosure);
 
   eventList.append(item);
   scrollToEnd(eventList);

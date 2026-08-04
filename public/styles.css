@@ -1183,35 +1183,73 @@ textarea:disabled {
 }
 
 .eventList li {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 7px 8px;
   border-bottom: 1px solid #222;
-  padding: 9px 0;
+}
+
+.eventList details {
+  min-width: 0;
+}
+
+.eventList summary {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto 12px;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.eventList summary::-webkit-details-marker {
+  display: none;
+}
+
+.eventList summary:hover .eventTitle {
+  color: #fff;
 }
 
 .eventList time {
-  grid-column: 2;
-  grid-row: 1;
   color: var(--faint);
   font-size: 0.76rem;
   text-align: right;
   white-space: nowrap;
 }
 
-.eventList span {
-  grid-column: 1;
-  grid-row: 1;
+.eventList .eventTitle {
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow: hidden;
   color: #d9d9d9;
   font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.eventIcon {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 5px;
+  background: #20242a;
+  color: #9ecbff;
+  font-family: ui-monospace, monospace;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.eventChevron {
+  color: var(--faint);
+  font-size: 1rem;
+  transition: transform 120ms ease;
+}
+
+.eventList details[open] .eventChevron {
+  transform: rotate(90deg);
 }
 
 .eventList pre {
-  grid-column: 1 / -1;
   max-height: 180px;
-  margin: 0;
+  margin: 0 0 9px 27px;
   overflow: auto;
   border-radius: 6px;
   background: #080808;
