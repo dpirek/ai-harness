@@ -11,12 +11,16 @@ test("file tools stay inside the workspace", async () => {
   const write = tools.find((tool) => tool.name === "write_file");
   const read = tools.find((tool) => tool.name === "read_file");
 
-  await write.execute({ path: "src/example.js", content: "line one\nline two\n" });
+  const writeResult = await write.execute({
+    path: "src/example.js",
+    content: "line one\nline two\n",
+  });
   const result = await read.execute({
     path: "src/example.js",
     start_line: 2,
     end_line: 2,
   });
+  assert.equal(writeResult.verified, true);
   assert.equal(result.content, "line two");
   await assert.rejects(() => read.execute({
     path: "../outside",

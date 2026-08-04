@@ -35,6 +35,8 @@ test("environment instructions identify the workspace and enabled tools", () => 
   assert.match(instructions, /- write_file: Create a workspace file/);
   assert.match(instructions, /approval gate\s+does not mean the tool is unavailable/);
   assert.match(instructions, /Never claim that you lack file or command access/);
+  assert.match(instructions, /After every mutation, validate that it succeeded/);
+  assert.match(instructions, /Do not report a\s+task as complete until you have validated its outcome/);
 });
 
 test("agent executes a function call and returns final text", async () => {
