@@ -458,6 +458,12 @@ function describeAgentEvent(event) {
     const ok = event.output?.ok === false ? "failed" : "completed";
     return `Tool ${ok}: ${event.name}`;
   }
+  if (event.type === "validation") {
+    if (event.status === "passed") return `Validation passed: ${event.tool}`;
+    if (event.status === "failed") return `Validation failed: ${event.tool}`;
+    if (event.status === "pending") return "Validation pending";
+    return "Validation required";
+  }
   if (event.type === "mcp_call") return `MCP call: ${event.server}.${event.name}`;
   if (event.type === "approval_request") {
     return `Approval requested: ${event.server}.${event.name}`;
@@ -471,6 +477,7 @@ function describeAgentEvent(event) {
 
 function eventIcon(title) {
   const value = title.toLowerCase();
+  if (value.includes("validation")) return "♢";
   if (value.includes("error") || value.includes("failed") || value.includes("denied")) return "!";
   if (value.includes("tool") || value.includes("command")) return "⌘";
   if (value.includes("approval")) return "✓";

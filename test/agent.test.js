@@ -89,6 +89,67 @@ test("agent executes a function call and returns final text", async () => {
   }]);
 });
 
+test("agent rejects completion until a successful validation follows a mutation", async () => {
+  const requests = [];
+  const events = [];
+  const responses = [
+    {
+      id: "resp_1",
+      output: [{
+        type: "function_call",
+        name: "write_file",
+        call_id: "write_1",
+        arguments: '{"path":"src/app.js"}',
+      }],
+    },
+    { id: "resp_2", output_text: "Done too early." },
+    {
+      id: "resp_3",
+      output: [{
+        type: "function_call",
+        name: "read_file",
+        call_id: "read_1",
+        arguments: '{"path":"src/app.js"}',
+      }],
+    },
+    { id: "resp_4", output_text: "Validated." },
+  ];
+  const tools = [
+    {
+      name: "write_file",
+      mutatesWorkspace: true,
+      parameters: { type: "object", properties: {}, additionalProperties: true },
+      async execute(args) { return { ok: true, path: args.path }; },
+    },
+    {
+      name: "read_file",
+      validatesWorkspace: true,
+      parameters: { type: "object", properties: {}, additionalProperties: true },
+      async execute(args) { return { ok: true, path: args.path }; },
+    },
+  ];
+  const agent = new CodingAgent({
+    client: {
+      async createResponse(body) {
+        requests.push(body);
+        return responses.shift();
+      },
+    },
+    tools,
+    model: "test-model",
+    root: "/workspace",
+    onEvent(event) { events.push(event); },
+  });
+
+  assert.equal(await agent.run("change it"), "Validated.");
+  assert.equal(requests.length, 4);
+  assert.match(requests[2].input[0].content[0].text, /Harness validation is still required/);
+  assert.deepEqual(
+    events.filter((event) => event.type === "validation").map((event) => event.status),
+    ["pending", "required", "passed"],
+  );
+});
+
 test("agent passes MCP tool definitions through to the API", async () => {
   const requests = [];
   const client = {
