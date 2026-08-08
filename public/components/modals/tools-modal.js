@@ -78,6 +78,9 @@ class ToolsModal extends BaseComponent {
   </form>
 </dialog>
 `;
+    const dialog = this.querySelector("dialog");
+    this.querySelector("#closeToolsButton").addEventListener("click", () => dialog.close());
+    this.querySelector("form").addEventListener("submit", (event) => { event.preventDefault(); this.emit("save-tool-permissions"); });
   }
 }
 

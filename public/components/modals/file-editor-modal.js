@@ -21,6 +21,10 @@ class FileEditorModal extends BaseComponent {
   </form>
 </dialog>
 `;
+    const dialog = this.querySelector("dialog");
+    this.querySelector("#closeFileEditorButton").addEventListener("click", () => dialog.close());
+    this.querySelector("#cancelFileEditorButton").addEventListener("click", () => dialog.close());
+    this.querySelector("form").addEventListener("submit", (event) => { event.preventDefault(); this.emit("save-workspace-file"); });
   }
 }
 

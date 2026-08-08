@@ -20,6 +20,11 @@ class WorkspacePickerModal extends BaseComponent {
   </form>
 </dialog>
 `;
+    const dialog = this.querySelector("dialog");
+    this.querySelector("#closeWorkspacePickerButton").addEventListener("click", () => dialog.close());
+    this.querySelector("#cancelWorkspacePickerButton").addEventListener("click", () => dialog.close());
+    this.querySelector("#parentWorkspacePickerButton").addEventListener("click", () => this.emit("workspace-picker-parent"));
+    this.querySelector("#confirmWorkspacePickerButton").addEventListener("click", () => this.emit("workspace-picker-confirm"));
   }
 }
 

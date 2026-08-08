@@ -35,6 +35,12 @@ const sidebarComponent = document.querySelector("harness-sidebar");
 const chatComponent = document.querySelector("harness-chat");
 const workspaceComponent = document.querySelector("workspace-panel");
 const streamComponent = document.querySelector("stream-panel");
+const workspacePickerModal = document.querySelector("workspace-picker-modal");
+const fileEditorModal = document.querySelector("file-editor-modal");
+const providersModal = document.querySelector("providers-modal");
+const systemPromptsModal = document.querySelector("system-prompts-modal");
+const toolsModal = document.querySelector("tools-modal");
+const mcpModal = document.querySelector("mcp-modal");
 
 const socketState = document.querySelector("#socketState");
 const workspaceMeta = document.querySelector("#workspaceMeta");
@@ -48,30 +54,19 @@ const emptyState = document.querySelector("#emptyState");
 const recentsList = document.querySelector("#recentsList");
 const settingsDialog = document.querySelector("#settingsDialog");
 const systemPromptsDialog = document.querySelector("#systemPromptsDialog");
-const systemPromptsForm = document.querySelector("#systemPromptsForm");
-const closeSystemPromptsButton = document.querySelector("#closeSystemPromptsButton");
 const systemPromptsList = document.querySelector("#systemPromptsList");
 const systemPromptEditor = document.querySelector("#systemPromptEditor");
 const systemPromptEditorTitle = document.querySelector("#systemPromptEditorTitle");
 const systemPromptContent = document.querySelector("#systemPromptContent");
 const systemPromptsStatus = document.querySelector("#systemPromptsStatus");
 const saveSystemPromptButton = document.querySelector("#saveSystemPromptButton");
-const settingsForm = document.querySelector("#settingsForm");
-const closeSettingsButton = document.querySelector("#closeSettingsButton");
 const configInput = document.querySelector("#configInput");
 const configStatus = document.querySelector("#configStatus");
 const saveConfigButton = document.querySelector("#saveConfigButton");
 const settingsStatus = document.querySelector("#settingsStatus");
 const reloadConfigButton = document.querySelector("#reloadConfigButton");
-const remoteTemplateButton = document.querySelector("#remoteTemplateButton");
-const stdioTemplateButton = document.querySelector("#stdioTemplateButton");
-const autoApproveTemplateButton = document.querySelector("#autoApproveTemplateButton");
 const toolsDialog = document.querySelector("#toolsDialog");
-const toolsForm = document.querySelector("#toolsForm");
-const closeToolsButton = document.querySelector("#closeToolsButton");
 const mcpDialog = document.querySelector("#mcpDialog");
-const mcpForm = document.querySelector("#mcpForm");
-const closeMcpButton = document.querySelector("#closeMcpButton");
 const toolPermissionsStatus = document.querySelector("#toolPermissionsStatus");
 const toolTypeSelect = document.querySelector("#toolTypeSelect");
 const toolLabelInput = document.querySelector("#toolLabelInput");
@@ -80,7 +75,6 @@ const toolCommandInput = document.querySelector("#toolCommandInput");
 const toolArgsInput = document.querySelector("#toolArgsInput");
 const toolCwdInput = document.querySelector("#toolCwdInput");
 const addToolButton = document.querySelector("#addToolButton");
-const showAddToolButton = document.querySelector("#showAddToolButton");
 const mcpTableToolbar = document.querySelector("#mcpTableToolbar");
 const mcpEditor = document.querySelector("#mcpEditor");
 const reloadToolsButton = document.querySelector("#reloadToolsButton");
@@ -90,7 +84,6 @@ const providerSelect = document.querySelector("#providerSelect");
 const providerSettingsSection = document.querySelector("#providerSettings");
 const providerNameInput = document.querySelector("#providerNameInput");
 const providersTableBody = document.querySelector("#providersTableBody");
-const addProviderButton = document.querySelector("#addProviderButton");
 const providerEditor = document.querySelector("#providerEditor");
 const saveSettingsButton = document.querySelector("#saveSettingsButton");
 const providerModelInput = document.querySelector("#providerModelInput");
@@ -112,18 +105,13 @@ const selectWorkspaceRootButton = document.querySelector("#selectWorkspaceRootBu
 const workspacePickerDialog = document.querySelector("#workspacePickerDialog");
 const workspacePickerTree = document.querySelector("#workspacePickerTree");
 const workspacePickerPath = document.querySelector("#workspacePickerPath");
-const closeWorkspacePickerButton = document.querySelector("#closeWorkspacePickerButton");
 const parentWorkspacePickerButton = document.querySelector("#parentWorkspacePickerButton");
-const cancelWorkspacePickerButton = document.querySelector("#cancelWorkspacePickerButton");
 const confirmWorkspacePickerButton = document.querySelector("#confirmWorkspacePickerButton");
 const fileEditorDialog = document.querySelector("#fileEditorDialog");
-const fileEditorForm = document.querySelector("#fileEditorForm");
 const fileEditorTitle = document.querySelector("#fileEditorTitle");
 const fileEditorPath = document.querySelector("#fileEditorPath");
 const fileEditorContent = document.querySelector("#fileEditorContent");
 const fileEditorStatus = document.querySelector("#fileEditorStatus");
-const closeFileEditorButton = document.querySelector("#closeFileEditorButton");
-const cancelFileEditorButton = document.querySelector("#cancelFileEditorButton");
 const saveFileEditorButton = document.querySelector("#saveFileEditorButton");
 
 let socketService;
@@ -1301,24 +1289,17 @@ filesResizeHandle.addEventListener("column-resize-start", (event) => startFilesR
 filesResizeHandle.addEventListener("column-resize-key", (event) => {
   setFilesWidth(filesWidth + (event.detail.key === "ArrowLeft" ? 24 : -24));
 });
-closeWorkspacePickerButton.addEventListener("click", () => workspacePickerDialog.close());
-parentWorkspacePickerButton.addEventListener("click", async () => {
+workspacePickerModal.addEventListener("workspace-picker-parent", async () => {
   if (!workspacePickerParent) return;
   try { await loadWorkspacePickerRoot(workspacePickerParent); } catch (error) { workspacePickerPath.textContent = error.message; }
 });
-cancelWorkspacePickerButton.addEventListener("click", () => workspacePickerDialog.close());
-confirmWorkspacePickerButton.addEventListener("click", () => {
+workspacePickerModal.addEventListener("workspace-picker-confirm", () => {
   if (!pendingWorkspacePath) return;
   workspaceInput.value = pendingWorkspacePath;
   workspacePickerDialog.close();
   saveActiveWorkspace();
 });
-closeFileEditorButton.addEventListener("click", () => fileEditorDialog.close());
-cancelFileEditorButton.addEventListener("click", () => fileEditorDialog.close());
-fileEditorForm.addEventListener("submit", (event) => {
-  event.preventDefault();
-  saveEditedFile();
-});
+fileEditorModal.addEventListener("save-workspace-file", saveEditedFile);
 window.addEventListener("resize", () => {
   setStreamWidth(streamWidth);
   setFilesWidth(filesWidth);
@@ -1346,56 +1327,26 @@ sidebarComponent.addEventListener("open-modal", async (event) => {
   }
 });
 
-closeSystemPromptsButton.addEventListener("click", () => systemPromptsDialog.close());
-systemPromptsForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
+systemPromptsModal.addEventListener("save-system-prompt", async () => {
   try { await saveSystemPrompt(); } catch (error) { systemPromptsStatus.textContent = error.message; systemPromptsStatus.dataset.state = "error"; }
 });
-
-closeSettingsButton.addEventListener("click", () => {
-  settingsDialog.close();
-});
-
-closeToolsButton.addEventListener("click", () => {
-  toolsDialog.close();
-});
-
-closeMcpButton.addEventListener("click", () => {
-  mcpDialog.close();
-});
-
-reloadConfigButton.addEventListener("click", loadConfig);
-saveConfigButton.addEventListener("click", async () => {
-  await saveConfig();
-});
-refreshModelsButton.addEventListener("click", loadProviderModels);
-addProviderButton.addEventListener("click", addProvider);
-showAddToolButton.addEventListener("click", () => {
+providersModal.addEventListener("refresh-provider-models", loadProviderModels);
+providersModal.addEventListener("add-provider", addProvider);
+mcpModal.addEventListener("reload-mcp-config", loadConfig);
+mcpModal.addEventListener("save-mcp-config", saveConfig);
+mcpModal.addEventListener("reload-mcp-tools", loadTools);
+mcpModal.addEventListener("show-mcp-editor", () => {
   mcpEditor.hidden = false;
   mcpTableToolbar.hidden = true;
   document.querySelector(".toolsListPanel").hidden = true;
   renderToolTypeFields();
   toolLabelInput.focus();
 });
-reloadToolsButton.addEventListener("click", loadTools);
-toolTypeSelect.addEventListener("change", renderToolTypeFields);
-
-settingsForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  saveProviderSettings();
-});
-
-toolsForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  saveToolPermissions();
-});
-
-mcpForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  await addTool();
-});
-
-providerSelect.addEventListener("change", async () => {
+providersModal.addEventListener("save-provider-settings", saveProviderSettings);
+toolsModal.addEventListener("save-tool-permissions", saveToolPermissions);
+mcpModal.addEventListener("add-mcp-tool", addTool);
+mcpModal.addEventListener("mcp-type-change", renderToolTypeFields);
+providersModal.addEventListener("provider-type-change", async () => {
   const nextProvider = providerSelect.value;
   const providerName = providerNameInput.value;
   if (!providerBaseUrlInput.value || /api\.openai\.com|localhost:11434/.test(providerBaseUrlInput.value)) {
@@ -1410,18 +1361,8 @@ providerSelect.addEventListener("change", async () => {
   await loadProviderModels();
 });
 
-providerBaseUrlInput.addEventListener("change", loadProviderModels);
-
-remoteTemplateButton.addEventListener("click", () => {
-  appendConfigTemplate(CONFIG_TEMPLATES.remote);
-});
-
-stdioTemplateButton.addEventListener("click", () => {
-  appendConfigTemplate(CONFIG_TEMPLATES.stdio);
-});
-
-autoApproveTemplateButton.addEventListener("click", () => {
-  appendConfigTemplate(CONFIG_TEMPLATES.autoApprove);
+mcpModal.addEventListener("append-mcp-template", (event) => {
+  appendConfigTemplate(CONFIG_TEMPLATES[event.detail.template]);
 });
 
 chatComponent.addEventListener("reset-chat", () => {

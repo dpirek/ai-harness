@@ -56,6 +56,13 @@ class ProvidersModal extends BaseComponent {
   </form>
 </dialog>
 `;
+    const dialog = this.querySelector("dialog");
+    this.querySelector("#closeSettingsButton").addEventListener("click", () => dialog.close());
+    this.querySelector("form").addEventListener("submit", (event) => { event.preventDefault(); this.emit("save-provider-settings"); });
+    this.querySelector("#addProviderButton").addEventListener("click", () => this.emit("add-provider"));
+    this.querySelector("#refreshModelsButton").addEventListener("click", () => this.emit("refresh-provider-models"));
+    this.querySelector("#providerSelect").addEventListener("change", () => this.emit("provider-type-change"));
+    this.querySelector("#providerBaseUrlInput").addEventListener("change", () => this.emit("refresh-provider-models"));
   }
 }
 

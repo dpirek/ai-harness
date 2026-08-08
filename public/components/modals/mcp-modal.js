@@ -88,6 +88,17 @@ class McpModal extends BaseComponent {
   </form>
 </dialog>
 `;
+    const dialog = this.querySelector("dialog");
+    this.querySelector("#closeMcpButton").addEventListener("click", () => dialog.close());
+    this.querySelector("#reloadConfigButton").addEventListener("click", () => this.emit("reload-mcp-config"));
+    this.querySelector("#saveConfigButton").addEventListener("click", () => this.emit("save-mcp-config"));
+    this.querySelector("#reloadToolsButton").addEventListener("click", () => this.emit("reload-mcp-tools"));
+    this.querySelector("#showAddToolButton").addEventListener("click", () => this.emit("show-mcp-editor"));
+    this.querySelector("#toolTypeSelect").addEventListener("change", () => this.emit("mcp-type-change"));
+    this.querySelector("form").addEventListener("submit", (event) => { event.preventDefault(); this.emit("add-mcp-tool"); });
+    for (const [id, template] of [["remoteTemplateButton", "remote"], ["stdioTemplateButton", "stdio"], ["autoApproveTemplateButton", "autoApprove"]]) {
+      this.querySelector(`#${id}`).addEventListener("click", () => this.emit("append-mcp-template", { template }));
+    }
   }
 }
 

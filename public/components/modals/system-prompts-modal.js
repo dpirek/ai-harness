@@ -28,6 +28,9 @@ class SystemPromptsModal extends BaseComponent {
   </form>
 </dialog>
 `;
+    const dialog = this.querySelector("dialog");
+    this.querySelector("#closeSystemPromptsButton").addEventListener("click", () => dialog.close());
+    this.querySelector("form").addEventListener("submit", (event) => { event.preventDefault(); this.emit("save-system-prompt"); });
   }
 }
 
