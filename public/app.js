@@ -22,9 +22,19 @@ const emptyState = document.querySelector("#emptyState");
 const newChatButton = document.querySelector("#newChatButton");
 const recentsList = document.querySelector("#recentsList");
 const settingsButton = document.querySelector("#settingsButton");
+const systemPromptsButton = document.querySelector("#systemPromptsButton");
 const toolsButton = document.querySelector("#toolsButton");
 const mcpButton = document.querySelector("#mcpButton");
 const settingsDialog = document.querySelector("#settingsDialog");
+const systemPromptsDialog = document.querySelector("#systemPromptsDialog");
+const systemPromptsForm = document.querySelector("#systemPromptsForm");
+const closeSystemPromptsButton = document.querySelector("#closeSystemPromptsButton");
+const systemPromptsList = document.querySelector("#systemPromptsList");
+const systemPromptEditor = document.querySelector("#systemPromptEditor");
+const systemPromptEditorTitle = document.querySelector("#systemPromptEditorTitle");
+const systemPromptContent = document.querySelector("#systemPromptContent");
+const systemPromptsStatus = document.querySelector("#systemPromptsStatus");
+const saveSystemPromptButton = document.querySelector("#saveSystemPromptButton");
 const settingsForm = document.querySelector("#settingsForm");
 const closeSettingsButton = document.querySelector("#closeSettingsButton");
 const configInput = document.querySelector("#configInput");
@@ -49,10 +59,19 @@ const toolCommandInput = document.querySelector("#toolCommandInput");
 const toolArgsInput = document.querySelector("#toolArgsInput");
 const toolCwdInput = document.querySelector("#toolCwdInput");
 const addToolButton = document.querySelector("#addToolButton");
+const showAddToolButton = document.querySelector("#showAddToolButton");
+const mcpTableToolbar = document.querySelector("#mcpTableToolbar");
+const mcpEditor = document.querySelector("#mcpEditor");
 const reloadToolsButton = document.querySelector("#reloadToolsButton");
 const toolsList = document.querySelector("#toolsList");
 const toolsStatus = document.querySelector("#toolsStatus");
 const providerSelect = document.querySelector("#providerSelect");
+const providerSettingsSection = document.querySelector("#providerSettings");
+const providerNameInput = document.querySelector("#providerNameInput");
+const providersTableBody = document.querySelector("#providersTableBody");
+const addProviderButton = document.querySelector("#addProviderButton");
+const providerEditor = document.querySelector("#providerEditor");
+const saveSettingsButton = document.querySelector("#saveSettingsButton");
 const providerModelInput = document.querySelector("#providerModelInput");
 const providerBaseUrlInput = document.querySelector("#providerBaseUrlInput");
 const providerApiKeyInput = document.querySelector("#providerApiKeyInput");
@@ -78,14 +97,53 @@ let defaultWorkspace = ".";
 const MIN_STREAM_WIDTH = 260;
 const MIN_SIDEBAR_WIDTH = 220;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const SIDEBAR_WIDTH_STORAGE_KEY = "ai-harness.sidebarWidth";
+const STREAM_WIDTH_STORAGE_KEY = "ai-harness.streamWidth";
 
 let toolsConfigContent = "";
+let systemPrompts = [];
+let editingSystemPromptKey = null;
+
+function renderSystemPrompts() {
+  systemPromptsList.replaceChildren();
+  for (const prompt of systemPrompts) {
+    const row = document.createElement("article"); row.className = "systemPromptRow";
+    const title = document.createElement("strong"); title.textContent = prompt.title;
+    const edit = document.createElement("button"); edit.type = "button"; edit.textContent = "Edit";
+    edit.addEventListener("click", () => {
+      editingSystemPromptKey = prompt.key;
+      systemPromptEditorTitle.textContent = prompt.title;
+      systemPromptContent.value = prompt.content;
+      systemPromptsList.hidden = true; systemPromptEditor.hidden = false; saveSystemPromptButton.hidden = false;
+    });
+    row.append(title, edit); systemPromptsList.append(row);
+  }
+}
+
+async function loadSystemPrompts() {
+  const response = await fetch("/api/system-prompts");
+  const payload = await response.json();
+  if (!payload.ok) throw new Error(payload.error || "Unable to load system prompts.");
+  systemPrompts = payload.prompts || [];
+  renderSystemPrompts();
+}
+
+async function saveSystemPrompt() {
+  const response = await fetch("/api/system-prompts", { method: "PUT", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ key: editingSystemPromptKey, content: systemPromptContent.value }) });
+  const payload = await response.json();
+  if (!payload.ok) throw new Error(payload.error || "Unable to save system prompt.");
+  systemPromptsStatus.textContent = "System prompt saved"; systemPromptsStatus.dataset.state = "success";
+  systemPromptEditor.hidden = true; systemPromptsList.hidden = false; saveSystemPromptButton.hidden = true;
+  await loadSystemPrompts();
+}
 
 function createSession(title = "New chat") {
   return {
     id: crypto.randomUUID(),
     title,
     messages: [],
+    events: [],
     workspace: defaultWorkspace,
     updatedAt: Date.now(),
   };
@@ -93,6 +151,8 @@ function createSession(title = "New chat") {
 
 let sessions = [];
 let providerSettings = defaultProviderSettings();
+let providers = [];
+let editingProviderId = null;
 let storedToolPermissions = normalizeToolPermissions();
 let sidebarWidth = 344;
 let streamWidth = 360;
@@ -103,6 +163,7 @@ async function saveUiState(state) {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ state }),
+    keepalive: true,
   });
   const payload = await response.json();
   if (!payload.ok) throw new Error(payload.error || "Unable to save UI state.");
@@ -111,7 +172,7 @@ async function saveUiState(state) {
 function persistUiState(state) {
   uiStateSaveQueue = uiStateSaveQueue
     .then(() => saveUiState(state))
-    .catch((error) => addEvent("UI state save failed", error.message));
+    .catch((error) => addEvent("UI state save failed", error.message, { persist: false }));
 }
 
 function applySidebarState(collapsed) {
@@ -136,7 +197,7 @@ function setSidebarWidth(width) {
   sidebarResizeHandle.setAttribute("aria-valuemin", String(MIN_SIDEBAR_WIDTH));
   sidebarResizeHandle.setAttribute("aria-valuenow", String(clamped));
   sidebarWidth = clamped;
-  persistUiState({ sidebarWidth: clamped });
+  localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(clamped));
 }
 
 function startSidebarResize(event) {
@@ -145,11 +206,13 @@ function startSidebarResize(event) {
   appShell.classList.remove("sidebar-collapsed");
   applySidebarState(false);
   persistUiState({ sidebarCollapsed: false });
-  appShell.classList.add("resizing-sidebar");
+  appShell.classList.add("resizing-column");
+  sidebarResizeHandle.classList.add("is-resizing");
   sidebarResizeHandle.setPointerCapture(event.pointerId);
   const move = (moveEvent) => setSidebarWidth(moveEvent.clientX);
   const stop = () => {
-    appShell.classList.remove("resizing-sidebar");
+    appShell.classList.remove("resizing-column");
+    sidebarResizeHandle.classList.remove("is-resizing");
     sidebarResizeHandle.removeEventListener("pointermove", move);
     sidebarResizeHandle.removeEventListener("pointerup", stop);
     sidebarResizeHandle.removeEventListener("pointercancel", stop);
@@ -169,20 +232,22 @@ function setStreamWidth(width) {
   streamResizeHandle.setAttribute("aria-valuemin", String(MIN_STREAM_WIDTH));
   streamResizeHandle.setAttribute("aria-valuenow", String(clamped));
   streamWidth = clamped;
-  persistUiState({ streamWidth: clamped });
+  localStorage.setItem(STREAM_WIDTH_STORAGE_KEY, String(clamped));
 }
 
 function startStreamResize(event) {
   if (event.button !== 0) return;
   event.preventDefault();
-  appShell.classList.add("resizing-stream");
+  appShell.classList.add("resizing-column");
+  streamResizeHandle.classList.add("is-resizing");
   streamResizeHandle.setPointerCapture(event.pointerId);
 
   const move = (moveEvent) => {
     setStreamWidth(window.innerWidth - moveEvent.clientX - 4);
   };
   const stop = () => {
-    appShell.classList.remove("resizing-stream");
+    appShell.classList.remove("resizing-column");
+    streamResizeHandle.classList.remove("is-resizing");
     streamResizeHandle.removeEventListener("pointermove", move);
     streamResizeHandle.removeEventListener("pointerup", stop);
     streamResizeHandle.removeEventListener("pointercancel", stop);
@@ -447,8 +512,10 @@ function renderRecents() {
     button.addEventListener("click", () => {
       if (runActive || session.id === activeSessionId) return;
       activeSessionId = session.id;
+      persistUiState({ activeSessionId });
       renderRecents();
       renderMessages();
+      renderEvents();
       renderWorkspace();
       addEvent("Opened recent chat", session.title);
     });
@@ -461,11 +528,11 @@ function startNewChat() {
   const session = createSession();
   sessions = [session, ...sessions];
   activeSessionId = session.id;
-  saveSessions();
+  persistUiState({ sessions, activeSessionId });
   renderRecents();
   renderMessages();
   renderWorkspace();
-  eventList.replaceChildren();
+  renderEvents();
   addEvent("New chat started");
 }
 
@@ -513,7 +580,7 @@ function eventIcon(title) {
   return "·";
 }
 
-function addEvent(title, detail) {
+function renderEvent({ title, detail, timestamp }) {
   const item = document.createElement("li");
   const disclosure = document.createElement("details");
   const summary = document.createElement("summary");
@@ -527,8 +594,9 @@ function addEvent(title, detail) {
   heading.textContent = title;
 
   const stamp = document.createElement("time");
-  stamp.dateTime = new Date().toISOString();
-  stamp.textContent = new Date().toLocaleTimeString([], {
+  const eventDate = new Date(timestamp || Date.now());
+  stamp.dateTime = eventDate.toISOString();
+  stamp.textContent = eventDate.toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
@@ -549,6 +617,23 @@ function addEvent(title, detail) {
   scrollToEnd(eventList);
 }
 
+function renderEvents() {
+  eventList.replaceChildren();
+  for (const event of activeSession()?.events || []) renderEvent(event);
+}
+
+function addEvent(title, detail, { persist = true } = {}) {
+  const event = { title, detail, timestamp: Date.now() };
+  renderEvent(event);
+  const session = activeSession();
+  if (!persist || !session) return;
+  session.events ||= [];
+  session.events.push(event);
+  session.events = session.events.slice(-500);
+  session.updatedAt = Date.now();
+  saveSessions();
+}
+
 function send(payload) {
   if (socket?.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify(payload));
@@ -564,14 +649,132 @@ function currentProviderSettings() {
   };
 }
 
+function providerFormRecord(existing = {}) {
+  return {
+    id: existing.id || crypto.randomUUID(),
+    name: providerNameInput.value.trim() || `${providerSelect.value} provider`,
+    type: providerSelect.value,
+    model: providerModelInput.value.trim(),
+    baseUrl: providerBaseUrlInput.value.trim(),
+    apiKey: providerApiKeyInput.value.trim(),
+    selected: existing.selected === true,
+  };
+}
+
+function renderProvidersTable() {
+  providersTableBody.replaceChildren();
+  if (providers.length === 0) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 6;
+    cell.textContent = "No providers saved. Configure one below and choose Add provider.";
+    row.append(cell);
+    providersTableBody.append(row);
+    return;
+  }
+  for (const item of providers) {
+    const row = document.createElement("tr");
+    row.classList.toggle("selected", item.selected === true);
+    const selectCell = document.createElement("td");
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = item.selected === true;
+    checkbox.setAttribute("aria-label", `Use ${item.name}`);
+    checkbox.addEventListener("change", () => {
+      providers = providers.map((provider) => ({ ...provider, selected: provider.id === item.id }));
+      providerSettings = { provider: item.type, model: item.model, baseUrl: item.baseUrl, apiKey: item.apiKey };
+      editingProviderId = item.id;
+      persistUiState({ providers });
+      renderProvidersTable();
+      renderProviderSettings(providerSettings, item.name);
+      send({ type: "provider_settings", ...providerSettings });
+    });
+    selectCell.append(checkbox);
+    row.append(selectCell);
+    for (const value of [item.name, item.type, item.model || "Default"]) {
+      const cell = document.createElement("td"); cell.textContent = value; row.append(cell);
+    }
+    const apiKeyCell = document.createElement("td");
+    apiKeyCell.className = "providerKeyStatus";
+    apiKeyCell.textContent = item.type === "ollama" ? "Not required" : item.apiKey ? "••••••••" : "Not set";
+    row.append(apiKeyCell);
+    const actionCell = document.createElement("td");
+    const editButton = document.createElement("button");
+    editButton.type = "button";
+    editButton.textContent = "Edit";
+    editButton.addEventListener("click", async () => {
+      editingProviderId = item.id;
+      renderProviderSettings({ provider: item.type, model: item.model, baseUrl: item.baseUrl, apiKey: item.apiKey }, item.name);
+      providerSettingsSection.classList.add("editor-open");
+      providerEditor.hidden = false;
+      saveSettingsButton.hidden = false;
+      await loadProviderModels();
+    });
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "providerDeleteButton";
+    deleteButton.textContent = "Delete";
+    deleteButton.addEventListener("click", () => {
+      if (!window.confirm(`Delete provider “${item.name}”?`)) return;
+      const deletedSelectedProvider = item.selected === true;
+      providers = providers.filter((provider) => provider.id !== item.id);
+      if (deletedSelectedProvider && providers.length > 0) {
+        providers = providers.map((provider, index) => ({ ...provider, selected: index === 0 }));
+        const next = providers[0];
+        providerSettings = {
+          provider: next.type, model: next.model, baseUrl: next.baseUrl, apiKey: next.apiKey,
+        };
+        send({ type: "provider_settings", ...providerSettings });
+      } else if (deletedSelectedProvider) {
+        providerSettings = defaultProviderSettings();
+        send({ type: "provider_settings", ...providerSettings });
+      }
+      if (editingProviderId === item.id) editingProviderId = null;
+      persistUiState({ providers });
+      renderProvidersTable();
+      settingsStatus.textContent = `${item.name} deleted`;
+      settingsStatus.dataset.state = "success";
+    });
+    actionCell.append(editButton, deleteButton);
+    row.append(actionCell);
+    providersTableBody.append(row);
+  }
+}
+
+function addProvider() {
+  editingProviderId = null;
+  renderProviderSettings(defaultProviderSettings(), "");
+  providerSettingsSection.classList.add("editor-open");
+  providerEditor.hidden = false;
+  saveSettingsButton.hidden = false;
+  settingsStatus.textContent = "Configure the new provider, then save.";
+  settingsStatus.dataset.state = "";
+  providerNameInput.focus();
+}
+
 function saveProviderSettings() {
   const settings = currentProviderSettings();
-  providerSettings = settings;
-  persistUiState({ providerSettings: settings });
-  send({ type: "provider_settings", ...settings });
-  workspaceMeta.textContent = `${settings.provider} · ${settings.model || "default model"}`;
+  const editing = providers.find((item) => item.id === editingProviderId);
+  if (editing) {
+    providers = providers.map((item) => item.id === editing.id ? providerFormRecord(item) : item);
+  } else {
+    const record = providerFormRecord({ selected: providers.length === 0 });
+    providers.push(record);
+    editingProviderId = record.id;
+  }
+  persistUiState(providers.length > 0 ? { providers } : { providerSettings: settings });
+  renderProvidersTable();
+  const updated = providers.find((item) => item.id === editingProviderId);
+  if (!updated || updated.selected) {
+    providerSettings = settings;
+    send({ type: "provider_settings", ...settings });
+    workspaceMeta.textContent = `${settings.provider} · ${settings.model || "default model"}`;
+  }
   settingsStatus.textContent = "Provider settings saved";
   settingsStatus.dataset.state = "success";
+  providerEditor.hidden = true;
+  providerSettingsSection.classList.remove("editor-open");
+  saveSettingsButton.hidden = true;
 }
 
 function currentToolPermissions() {
@@ -621,7 +824,8 @@ function setModelOptions(models, selectedModel) {
   providerModelInput.value = selected;
 }
 
-function renderProviderSettings(settings = providerSettings) {
+function renderProviderSettings(settings = providerSettings, name = providers.find((item) => item.selected)?.name || "") {
+  providerNameInput.value = name;
   providerSelect.value = ["openai", "ollama", "custom"].includes(settings.provider)
     ? settings.provider
     : "openai";
@@ -634,6 +838,9 @@ function renderProviderSettings(settings = providerSettings) {
       ? "http://localhost:8000/v1"
       : "https://api.openai.com/v1";
   providerApiKeyField.hidden = providerSelect.value === "ollama";
+  providerApiKeyInput.placeholder = providerSelect.value === "openai"
+    ? "Required OpenAI API key"
+    : "Optional bearer token";
 }
 
 async function loadProviderModels() {
@@ -681,7 +888,7 @@ async function loadConfig() {
     const payload = await response.json();
     if (!payload.ok) throw new Error(payload.error || "Unable to load config.");
     configInput.value = payload.content;
-    setConfigStatus(payload.exists ? "Loaded .ai-harness/config.toml" : "No config file yet");
+    setConfigStatus(payload.exists ? "Loaded MCP configuration from SQLite" : "No MCP configuration yet");
   } catch (error) {
     setConfigStatus(error.message, "error");
   } finally {
@@ -782,12 +989,12 @@ function renderTools() {
     const row = document.createElement("article");
     row.className = "toolRow";
 
-    const meta = document.createElement("div");
     const title = document.createElement("strong");
     title.textContent = block.label;
+    const type = document.createElement("span");
+    type.textContent = block.type;
     const detail = document.createElement("span");
-    detail.textContent = `${block.type} · ${block.detail}`;
-    meta.append(title, detail);
+    detail.textContent = block.detail;
 
     const toggle = document.createElement("button");
     toggle.type = "button";
@@ -805,7 +1012,7 @@ function renderTools() {
       }
     });
 
-    row.append(meta, toggle);
+    row.append(title, type, detail, toggle);
     toolsList.append(row);
   }
 }
@@ -842,6 +1049,9 @@ async function addTool() {
     toolCwdInput.value = "";
     renderTools();
     setToolsStatus("Server added", "success");
+    mcpEditor.hidden = true;
+    mcpTableToolbar.hidden = false;
+    document.querySelector(".toolsListPanel").hidden = false;
   } catch (error) {
     setToolsStatus(error.message, "error");
   } finally {
@@ -1081,11 +1291,25 @@ window.addEventListener("resize", () => {
 });
 
 settingsButton.addEventListener("click", async () => {
-  renderProviderSettings();
+  renderProvidersTable();
+  providerSettingsSection.classList.remove("editor-open");
+  providerEditor.hidden = true;
+  saveSettingsButton.hidden = true;
   settingsStatus.textContent = "Provider settings are stored in SQLite.";
   settingsStatus.dataset.state = "";
   settingsDialog.showModal();
-  await loadProviderModels();
+});
+
+systemPromptsButton.addEventListener("click", async () => {
+  systemPromptEditor.hidden = true; systemPromptsList.hidden = false; saveSystemPromptButton.hidden = true;
+  systemPromptsDialog.showModal();
+  try { await loadSystemPrompts(); } catch (error) { systemPromptsStatus.textContent = error.message; systemPromptsStatus.dataset.state = "error"; }
+});
+
+closeSystemPromptsButton.addEventListener("click", () => systemPromptsDialog.close());
+systemPromptsForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try { await saveSystemPrompt(); } catch (error) { systemPromptsStatus.textContent = error.message; systemPromptsStatus.dataset.state = "error"; }
 });
 
 toolsButton.addEventListener("click", async () => {
@@ -1097,9 +1321,11 @@ toolsButton.addEventListener("click", async () => {
 
 mcpButton.addEventListener("click", async () => {
   mcpDialog.showModal();
+  mcpEditor.hidden = true;
+  mcpTableToolbar.hidden = false;
+  document.querySelector(".toolsListPanel").hidden = false;
   renderToolTypeFields();
   await loadTools();
-  await loadConfig();
 });
 
 closeSettingsButton.addEventListener("click", () => {
@@ -1119,6 +1345,14 @@ saveConfigButton.addEventListener("click", async () => {
   await saveConfig();
 });
 refreshModelsButton.addEventListener("click", loadProviderModels);
+addProviderButton.addEventListener("click", addProvider);
+showAddToolButton.addEventListener("click", () => {
+  mcpEditor.hidden = false;
+  mcpTableToolbar.hidden = true;
+  document.querySelector(".toolsListPanel").hidden = true;
+  renderToolTypeFields();
+  toolLabelInput.focus();
+});
 reloadToolsButton.addEventListener("click", loadTools);
 toolTypeSelect.addEventListener("change", renderToolTypeFields);
 
@@ -1139,6 +1373,7 @@ mcpForm.addEventListener("submit", async (event) => {
 
 providerSelect.addEventListener("change", async () => {
   const nextProvider = providerSelect.value;
+  const providerName = providerNameInput.value;
   if (!providerBaseUrlInput.value || /api\.openai\.com|localhost:11434/.test(providerBaseUrlInput.value)) {
     providerBaseUrlInput.value = nextProvider === "ollama"
       ? "http://localhost:11434"
@@ -1147,7 +1382,7 @@ providerSelect.addEventListener("change", async () => {
         : "";
   }
   setModelOptions([], defaultModelForProvider(nextProvider));
-  renderProviderSettings(currentProviderSettings());
+  renderProviderSettings(currentProviderSettings(), providerName);
   await loadProviderModels();
 });
 
@@ -1180,39 +1415,57 @@ resetButton.addEventListener("click", () => {
 });
 
 clearEventsButton.addEventListener("click", () => {
-  eventList.replaceChildren();
+  const session = activeSession();
+  if (session) {
+    session.events = [];
+    saveSessions();
+  }
+  renderEvents();
 });
 
 async function initialize() {
+  let state = {};
   try {
     const response = await fetch("/api/ui-state");
     const payload = await response.json();
     if (!payload.ok) throw new Error(payload.error || "Unable to load UI state.");
-    const state = payload.state || {};
+    state = payload.state || {};
     sessions = Array.isArray(state.sessions) && state.sessions.length > 0
-      ? state.sessions.map((session) => ({ ...session, workspace: session.workspace || defaultWorkspace }))
+      ? state.sessions.map((session) => ({
+        ...session,
+        messages: Array.isArray(session.messages) ? session.messages : [],
+        events: Array.isArray(session.events) ? session.events : [],
+        workspace: session.workspace || defaultWorkspace,
+      }))
       : [createSession("AI Harness Session")];
     providerSettings = { ...defaultProviderSettings(), ...(state.providerSettings || {}) };
+    providers = Array.isArray(state.providers) ? state.providers : [];
+    editingProviderId = providers.find((item) => item.selected)?.id || null;
     storedToolPermissions = normalizeToolPermissions(state.toolPermissions);
-    sidebarWidth = Number.isFinite(Number(state.sidebarWidth)) && Number(state.sidebarWidth) > 0
-      ? Number(state.sidebarWidth)
+    const localSidebarWidth = Number(localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY));
+    const localStreamWidth = Number(localStorage.getItem(STREAM_WIDTH_STORAGE_KEY));
+    sidebarWidth = Number.isFinite(localSidebarWidth) && localSidebarWidth > 0
+      ? localSidebarWidth
       : 344;
-    streamWidth = Number.isFinite(Number(state.streamWidth)) && Number(state.streamWidth) > 0
-      ? Number(state.streamWidth)
+    streamWidth = Number.isFinite(localStreamWidth) && localStreamWidth > 0
+      ? localStreamWidth
       : 360;
     applySidebarState(state.sidebarCollapsed === true);
   } catch (error) {
     sessions = [createSession("AI Harness Session")];
     applySidebarState(false);
-    addEvent("UI state load failed", error.message);
+    addEvent("UI state load failed", error.message, { persist: false });
   }
-  activeSessionId = sessions[0].id;
+  activeSessionId = sessions.some((session) => session.id === state?.activeSessionId)
+    ? state.activeSessionId
+    : sessions[0].id;
   setSidebarWidth(sidebarWidth);
   setStreamWidth(streamWidth);
   renderProviderSettings();
   renderToolPermissions();
   renderRecents();
   renderMessages();
+  renderEvents();
   renderWorkspace();
   resizePromptInput();
   await loadHealth();

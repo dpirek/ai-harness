@@ -15,12 +15,36 @@ import { createUiStateStore } from "./lib/ui-state.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, "public");
 const configPath = path.join(process.cwd(), ".ai-harness/config.toml");
-const uiStateDatabasePath = path.join(process.cwd(), ".ai-harness/ui-state.sqlite");
+const databaseDir = path.join(process.cwd(), "db");
+const uiStateDatabasePath = path.join(databaseDir, "ui-state.sqlite");
+const legacyUiStateDatabasePath = path.join(process.cwd(), ".ai-harness/ui-state.sqlite");
 
 loadEnv(path.join(__dirname, ".env"));
 const port = Number(process.env.PORT || 3000);
-await fs.mkdir(path.dirname(uiStateDatabasePath), { recursive: true });
+await fs.mkdir(databaseDir, { recursive: true });
+let databaseExists = true;
+try {
+  await fs.access(uiStateDatabasePath);
+} catch {
+  databaseExists = false;
+}
+if (!databaseExists) {
+  for (const suffix of ["", "-wal", "-shm"]) {
+    try {
+      await fs.rename(`${legacyUiStateDatabasePath}${suffix}`, `${uiStateDatabasePath}${suffix}`);
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+  }
+}
 const uiStateStore = createUiStateStore(uiStateDatabasePath);
+if (uiStateStore.getMcpConfig() === undefined) {
+  try {
+    uiStateStore.setMcpConfig(await fs.readFile(configPath, "utf8"));
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+}
 
 const CONTENT_TYPES = {
   ".css": "text/css; charset=utf-8",
@@ -94,16 +118,8 @@ async function readRequestBody(req, limit = 250_000) {
 
 async function handleConfigApi(req, res) {
   if (req.method === "GET") {
-    try {
-      const content = await fs.readFile(configPath, "utf8");
-      json(res, 200, { ok: true, exists: true, path: ".ai-harness/config.toml", content });
-    } catch (error) {
-      if (error.code === "ENOENT") {
-        json(res, 200, { ok: true, exists: false, path: ".ai-harness/config.toml", content: "" });
-      } else {
-        json(res, 500, { ok: false, error: error.message });
-      }
-    }
+    const content = uiStateStore.getMcpConfig();
+    json(res, 200, { ok: true, exists: content !== undefined, path: "db/ui-state.sqlite", content: content || "" });
     return;
   }
 
@@ -114,11 +130,10 @@ async function handleConfigApi(req, res) {
         json(res, 400, { ok: false, error: "Expected string content." });
         return;
       }
-      await fs.mkdir(path.dirname(configPath), { recursive: true });
-      await fs.writeFile(configPath, body.content, "utf8");
+      uiStateStore.setMcpConfig(body.content);
       json(res, 200, {
         ok: true,
-        path: ".ai-harness/config.toml",
+        path: "db/ui-state.sqlite",
         bytes: Buffer.byteLength(body.content),
       });
     } catch (error) {
@@ -142,7 +157,9 @@ async function handleModelsApi(req, res) {
     const body = JSON.parse(await readRequestBody(req, 20_000) || "{}");
     const provider = normalizeProvider(body.provider);
     const baseUrl = String(body.baseUrl || "").trim();
-    const apiKey = String(body.apiKey || "").trim();
+    const storedSettings = uiStateStore.getAll().providerSettings || {};
+    const storedApiKey = storedSettings.provider === provider ? storedSettings.apiKey : "";
+    const apiKey = String(body.apiKey || storedApiKey || "").trim();
 
     if (provider === "ollama") {
       const origin = (baseUrl || process.env.OLLAMA_BASE_URL || "http://localhost:11434").replace(/\/$/, "");
@@ -166,9 +183,9 @@ async function handleModelsApi(req, res) {
     const origin = (baseUrl || defaultBaseUrl(provider) || "https://api.openai.com/v1").replace(/\/$/, "");
     const bearer = provider === "custom"
       ? apiKey || process.env.CUSTOM_AI_API_KEY || ""
-      : process.env.OPENAI_API_KEY || "";
+      : apiKey;
     if (provider === "openai" && !bearer) {
-      json(res, 400, { ok: false, error: "OPENAI_API_KEY is required to list OpenAI models." });
+      json(res, 400, { ok: false, error: "Save an OpenAI API key in Provider settings first." });
       return;
     }
     const headers = {};
@@ -214,6 +231,27 @@ async function handleUiStateApi(req, res) {
   }
   res.writeHead(405, { allow: "GET, PUT" });
   res.end();
+}
+
+async function handleSystemPromptsApi(req, res) {
+  if (req.method === "GET") {
+    json(res, 200, { ok: true, prompts: uiStateStore.getSystemPromptRows() });
+    return;
+  }
+  if (req.method === "PUT") {
+    try {
+      const body = JSON.parse(await readRequestBody(req, 100_000) || "{}");
+      if (typeof body.key !== "string" || typeof body.content !== "string") {
+        throw new Error("Expected prompt key and content.");
+      }
+      uiStateStore.setSystemPrompt(body.key, body.content);
+      json(res, 200, { ok: true });
+    } catch (error) {
+      json(res, 400, { ok: false, error: error.message });
+    }
+    return;
+  }
+  res.writeHead(405, { allow: "GET, PUT" }); res.end();
 }
 
 function resolvePublicPath(urlPath) {
@@ -393,7 +431,8 @@ async function resolveWorkspace(requested) {
 }
 
 async function createAgentSession(socket, sessionId, streamStates, root, pendingApprovals) {
-  const settings = providerSettings.get(socket) || {};
+  const storedSettings = uiStateStore.getAll().providerSettings || {};
+  const settings = { ...storedSettings, ...(providerSettings.get(socket) || {}) };
   const provider = normalizeProvider(settings.provider || process.env.AI_PROVIDER);
   const model = settings.model ||
     process.env.AI_MODEL ||
@@ -435,15 +474,16 @@ async function createAgentSession(socket, sessionId, streamStates, root, pending
     sendJson(socket, { type: "answer_delta", sessionId, text });
   };
 
-  if (provider === "openai" && !process.env.OPENAI_API_KEY) {
-    throw new Error("OPENAI_API_KEY is required. Set it in the environment or .env.");
+  const apiKey = provider === "custom"
+    ? settings.apiKey || process.env.CUSTOM_AI_API_KEY || ""
+    : settings.apiKey || "";
+  if (provider === "openai" && !apiKey) {
+    throw new Error("Save an OpenAI API key in Provider settings first.");
   }
 
   const client = createModelClient({
     provider,
-    apiKey: provider === "custom"
-      ? settings.apiKey || process.env.CUSTOM_AI_API_KEY || ""
-      : process.env.OPENAI_API_KEY,
+    apiKey,
     baseUrl: settings.baseUrl || defaultBaseUrl(provider),
   });
   const permissions = normalizeToolPermissions(toolPermissions.get(socket));
@@ -451,7 +491,12 @@ async function createAgentSession(socket, sessionId, streamStates, root, pending
   // authorization to execute it. Disabled tools are not exposed to the model.
   const localTools = createTools({ root, approve: async () => true })
     .filter((tool) => permissions[tool.name] === true);
-  const mcpTools = await loadMcpTools({ root, approve: approveMcp, onInfo });
+  const mcpTools = await loadMcpTools({
+    root,
+    configContent: uiStateStore.getMcpConfig() || "",
+    approve: approveMcp,
+    onInfo,
+  });
   return new CodingAgent({
     client,
     tools: [...localTools, ...mcpTools],
@@ -462,6 +507,7 @@ async function createAgentSession(socket, sessionId, streamStates, root, pending
     onTool,
     onEvent,
     onTextDelta,
+    systemPrompts: uiStateStore.getSystemPrompts(),
   });
 }
 
@@ -660,6 +706,7 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
   if (url.pathname === "/api/health") {
     const envProvider = normalizeProvider(process.env.AI_PROVIDER);
+    const storedSettings = uiStateStore.getAll().providerSettings || {};
     json(res, 200, {
       ok: true,
       provider: envProvider,
@@ -668,7 +715,7 @@ const server = http.createServer(async (req, res) => {
       ollamaBaseUrl: process.env.OLLAMA_BASE_URL || "http://localhost:11434",
       customModel: process.env.CUSTOM_AI_MODEL || "custom-model",
       customBaseUrl: process.env.CUSTOM_AI_BASE_URL || "http://localhost:8000/v1",
-      hasApiKey: Boolean(process.env.OPENAI_API_KEY),
+      hasApiKey: Boolean(storedSettings.apiKey),
       approveAll: process.env.AI_HARNESS_WEB_APPROVE === "true",
       workspace: process.cwd(),
     });
@@ -684,6 +731,10 @@ const server = http.createServer(async (req, res) => {
   }
   if (url.pathname === "/api/ui-state") {
     await handleUiStateApi(req, res);
+    return;
+  }
+  if (url.pathname === "/api/system-prompts") {
+    await handleSystemPromptsApi(req, res);
     return;
   }
   await serveStatic(req, res);

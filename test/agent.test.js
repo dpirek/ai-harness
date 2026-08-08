@@ -265,12 +265,13 @@ test("agent emits run events for web streaming", async () => {
   });
 
   assert.equal(await agent.run("hello"), "Done.");
-  assert.deepEqual(events, [
-    { type: "start", prompt: "hello", images: 0 },
-    { type: "turn", turn: 1 },
-    { type: "response", id: "resp_1" },
-    { type: "final", text: "Done." },
+  assert.deepEqual(events.map(({ inputPrompt, serverResponse, ...event }) => event), [
+    { type: "start", prompt: "hello", images: 0 }, { type: "turn", turn: 1 },
+    { type: "response", id: "resp_1" }, { type: "final", text: "Done." },
   ]);
+  assert.equal(events[1].inputPrompt.input[0].content[0].text, "hello");
+  assert.equal(events[1].inputPrompt.model, "test-model");
+  assert.deepEqual(events[1].serverResponse, { id: "resp_1", output_text: "Done." });
 });
 
 test("promptContent includes image inputs", () => {

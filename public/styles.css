@@ -76,7 +76,6 @@ code {
   display: flex;
   min-height: 0;
   flex-direction: column;
-  border-right: 1px solid var(--sidebar-line);
   background: var(--sidebar);
   color: #e8e8e8;
   transition: width 160ms ease;
@@ -532,7 +531,7 @@ code {
 
 .message-user .messageBody {
   max-width: min(680px, 86%);
-  border-radius: 999px;
+  border-radius: 18px 18px 6px 18px;
   background: var(--bubble);
   padding: 14px 22px;
   line-height: 1.35;
@@ -593,13 +592,6 @@ code {
   gap: 18px;
   padding: 0 var(--chat-gutter) 18px;
   background: linear-gradient(180deg, rgba(0, 0, 0, 0), #000 34%);
-}
-
-.notice {
-  margin: 0;
-  color: #8b8b8b;
-  font-size: 0.88rem;
-  text-align: center;
 }
 
 .composer {
@@ -754,8 +746,7 @@ textarea:disabled {
 
 .columnResizeHandle:hover::before,
 .columnResizeHandle:focus-visible::before,
-.app.resizing-stream .streamResizeHandle::before,
-.app.resizing-sidebar .sidebarResizeHandle::before {
+.columnResizeHandle.is-resizing::before {
   left: 2px;
   width: 3px;
   background: #555;
@@ -765,10 +756,8 @@ textarea:disabled {
   outline: 0;
 }
 
-.app.resizing-stream,
-.app.resizing-stream *,
-.app.resizing-sidebar,
-.app.resizing-sidebar * {
+.app.resizing-column,
+.app.resizing-column * {
   cursor: col-resize;
   user-select: none;
 }
@@ -818,6 +807,20 @@ textarea:disabled {
   padding: 0;
 }
 
+#settingsDialog {
+  width: min(1120px, calc(100vw - 40px));
+}
+
+#saveSettingsButton[hidden] { display: none; }
+#saveSystemPromptButton[hidden], .systemPromptEditor[hidden], .systemPromptsList[hidden] { display: none; }
+
+.systemPromptsList { display: grid; border: 1px solid #292929; border-radius: 9px; overflow: hidden; }
+.systemPromptRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-bottom: 1px solid #292929; }
+.systemPromptRow:last-child { border-bottom: 0; }
+.systemPromptRow button { min-height: 32px; border: 1px solid #333; border-radius: 999px; background: #1f1f1f; padding: 0 12px; }
+.systemPromptEditor label { display: grid; gap: 8px; color: var(--muted); font-weight: 700; }
+.systemPromptEditor .configInput { min-height: 420px; }
+
 .settingsDialog::backdrop {
   background: rgba(0, 0, 0, 0.68);
 }
@@ -855,8 +858,99 @@ textarea:disabled {
 
 .providerSettings {
   display: grid;
-  grid-template-columns: 130px minmax(160px, 1fr) minmax(220px, 1.2fr) minmax(180px, 1fr);
-  gap: 10px;
+  gap: 14px 12px;
+}
+
+.providerTableToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.providerTableToolbar > div { display: flex; gap: 8px; }
+
+.providerTableToolbar button,
+.providerTable button {
+  min-height: 32px;
+  border: 1px solid #333;
+  border-radius: 999px;
+  background: #1f1f1f;
+  padding: 0 12px;
+}
+
+.providerTable td:last-child {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.providerTable button.providerDeleteButton {
+  border-color: #55302d;
+  color: #ff9a92;
+}
+
+.providerTable button.providerDeleteButton:hover {
+  background: #2b1715;
+  border-color: #78413c;
+}
+
+.providerEditor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+}
+
+.providerEditor[hidden] { display: none; }
+.toolsAddPanel[hidden],
+.providerTableToolbar[hidden],
+.toolsListPanel[hidden],
+.settingsTemplates[hidden],
+.configInput[hidden] { display: none; }
+.toolsAddPanel .remoteToolField[hidden],
+.toolsAddPanel .stdioToolField[hidden] { display: none; }
+#providerApiKeyField { grid-column: 1; }
+#providerApiKeyField[hidden] { display: none; }
+
+.providerSettings.editor-open .providerTableToolbar,
+.providerSettings.editor-open .providerTableWrap {
+  display: none;
+}
+
+.providerTableWrap {
+  grid-column: 1 / -1;
+  max-height: 210px;
+  overflow: auto;
+  border: 1px solid #292929;
+  border-radius: 9px;
+}
+
+.providerTable {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.providerTable th,
+.providerTable td {
+  border-bottom: 1px solid #242424;
+  padding: 10px 12px;
+  font-size: 0.84rem;
+}
+
+.providerTable th { color: var(--muted); }
+.providerKeyStatus { color: var(--muted); white-space: nowrap; }
+.providerTable tbody tr { cursor: pointer; }
+.providerTable tbody tr:hover,
+.providerTable tbody tr.selected { background: #1b1b1b; }
+.providerTable tr:last-child td { border-bottom: 0; }
+.providerSettings .providerTable input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border-radius: 4px;
+  accent-color: #fff;
 }
 
 .providerSettings label,
@@ -886,6 +980,15 @@ textarea:disabled {
   outline: 0;
 }
 
+.providerSettings select,
+.toolsAddPanel select {
+  appearance: none;
+  padding-right: 44px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.25 6 6.25l5-5' fill='none' stroke='%23d7d7d7' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 16px center;
+}
+
 .providerSettings input:focus,
 .providerSettings select:focus,
 .toolsAddPanel input:focus,
@@ -895,10 +998,18 @@ textarea:disabled {
 
 .providerModelActions {
   display: flex;
-  grid-column: 1 / -1;
+  grid-column: 1;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  align-self: end;
+  min-height: 40px;
+}
+
+.providerModelActions > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .providerModelActions button {
@@ -1018,8 +1129,8 @@ textarea:disabled {
 
 .toolsAddPanel {
   display: grid;
-  grid-template-columns: 140px minmax(120px, 1fr) minmax(220px, 1.4fr);
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
   align-items: end;
   border: 1px solid #282828;
   border-radius: 8px;
@@ -1033,7 +1144,26 @@ textarea:disabled {
 
 .toolsListPanel {
   display: grid;
-  gap: 10px;
+  overflow: hidden;
+  border: 1px solid #292929;
+  border-radius: 9px;
+}
+
+.mcpListHeader,
+.toolRow {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(80px, .65fr) minmax(200px, 2fr) 76px;
+  align-items: center;
+  gap: 12px;
+}
+
+.mcpListHeader {
+  border-bottom: 1px solid #292929;
+  padding: 10px 12px;
+  color: var(--muted);
+  font-size: .76rem;
+  font-weight: 800;
+  text-transform: uppercase;
 }
 
 .toolsListHeader {
@@ -1059,21 +1189,17 @@ textarea:disabled {
 
 .toolsList {
   display: grid;
-  gap: 8px;
   max-height: 310px;
   overflow: auto;
 }
 
 .toolRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  border: 1px solid #282828;
-  border-radius: 8px;
+  border-bottom: 1px solid #282828;
   background: #0b0b0b;
   padding: 12px;
 }
+
+.toolRow:last-child { border-bottom: 0; }
 
 .toolRow strong,
 .toolRow span {
@@ -1324,8 +1450,21 @@ textarea:disabled {
     gap: 8px;
   }
 
-  .providerSettings {
+  .providerSettings,
+  .providerEditor {
     grid-template-columns: 1fr;
+  }
+
+  .providerEditor > label,
+  .providerEditor > label:nth-of-type(n),
+  #providerApiKeyField,
+  .providerModelActions {
+    grid-column: 1;
+  }
+
+  .providerModelActions {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .toolsAddPanel {

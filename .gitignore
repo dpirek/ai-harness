@@ -1,4 +1,5 @@
 .env
 .ai-harness/
+/db/
 node_modules/
 npm-debug.log*

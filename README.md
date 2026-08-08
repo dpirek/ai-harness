@@ -7,21 +7,18 @@ and run commands inside the current workspace.
 ## Requirements
 
 - Node.js 22.5 or newer (the web UI uses the built-in `node:sqlite` module)
-- An OpenAI API key
+- An OpenAI API key when using the OpenAI provider
 
 No `npm install` is required.
 
 ## Configure
 
-Create `.env`:
-
-```env
-AI_PROVIDER=openai
-OPENAI_API_KEY=your_api_key
-OPENAI_MODEL=gpt-5.1-codex
-```
-
-`OPENAI_BASE_URL` is optional.
+For the web UI, add one or more providers in Settings and select the active one
+with its checkbox. Provider credentials are stored in the local `providers`
+SQLite table; per-provider model and selection data live in `provider_settings`. A `.env` file is
+not required. The web server reads the OpenAI key from SQLite. Process environment
+variables remain supported for CLI configuration and non-secret web defaults such
+as `OPENAI_MODEL` and `OPENAI_BASE_URL`.
 
 For Ollama:
 
@@ -44,7 +41,14 @@ The web Settings panel can also switch between OpenAI, Ollama, and Custom. Provi
 changes apply to new in-memory agent sessions; active browser chat history is
 sent back as context after refresh.
 
-The web Tools panel manages MCP server entries in `.ai-harness/config.toml`.
+The web MCP Configuration panel stores MCP server entries in the SQLite
+`mcp_configuration` table. Existing `.ai-harness/config.toml` content is imported
+automatically once when the table is empty.
+Web UI state, conversations, and stream history are stored in `db/ui-state.sqlite`.
+The `db/` directory is local runtime data and is excluded from Git.
+The System prompts panel edits the SQLite-backed agent instructions, workspace
+context, tool contract, and validation reminder. New databases are seeded with
+safe defaults; changes apply to newly created in-memory agent sessions.
 It can add remote MCP or local stdio MCP servers and turn existing server blocks
 on or off by commenting/uncommenting their TOML block. Local stdio MCP tools are
 available to OpenAI and Ollama; remote MCP server definitions are passed through

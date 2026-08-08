@@ -3,25 +3,60 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { createUiStateStore } from "../lib/ui-state.js";
 
 test("SQLite UI state store persists and updates allowed values", () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "ai-harness-ui-state-"));
   const databasePath = path.join(directory, "state.sqlite");
   const store = createUiStateStore(databasePath);
+  const session = {
+    id: "one",
+    title: "First chat",
+    workspace: "/workspace",
+    messages: [{ role: "user", text: "Hello" }],
+    events: [{ title: "Run started", timestamp: 456 }],
+    updatedAt: 123,
+  };
 
-  store.set({ sessions: [{ id: "one" }], sidebarCollapsed: true, sidebarWidth: 388 });
+  store.set({
+    sessions: [session],
+    activeSessionId: "one",
+    sidebarCollapsed: true,
+    providerSettings: { provider: "custom", model: "model-a", baseUrl: "http://ai", apiKey: "key" },
+    toolPermissions: { read_file: true, run_command: false },
+  });
+  store.setMcpConfig("[mcp]\nauto_approve = true");
   store.set({ sidebarCollapsed: false, ignored: "value" });
   assert.deepEqual(store.getAll(), {
-    sessions: [{ id: "one" }],
+    sessions: [session],
+    activeSessionId: "one",
     sidebarCollapsed: false,
-    sidebarWidth: 388,
+    providerSettings: { provider: "custom", model: "model-a", baseUrl: "http://ai", apiKey: "key" },
+    providers: [{
+      id: "custom", name: "custom", type: "custom", model: "model-a",
+      baseUrl: "http://ai", apiKey: "key", selected: true,
+    }],
+    toolPermissions: { read_file: true, run_command: false },
   });
   store.close();
 
   const reopened = createUiStateStore(databasePath);
-  assert.deepEqual(reopened.getAll().sessions, [{ id: "one" }]);
+  assert.deepEqual(reopened.getAll().sessions, [session]);
+  assert.equal(reopened.getMcpConfig(), "[mcp]\nauto_approve = true");
   reopened.close();
+  const database = new DatabaseSync(databasePath, { readOnly: true });
+  const tables = database.prepare(
+    "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name",
+  ).all().map(({ name }) => name);
+  assert.deepEqual(tables, [
+    "events", "layout", "mcp_configuration", "messages", "provider_settings", "providers", "sessions", "system_prompts", "tool_permissions",
+  ]);
+  assert.equal(database.prepare("SELECT count(*) AS count FROM system_prompts").get().count, 4);
+  const eventColumns = database.prepare("SELECT name FROM pragma_table_info('events')").all().map(({ name }) => name);
+  assert.ok(eventColumns.includes("input_prompt"));
+  assert.ok(eventColumns.includes("server_response"));
+  database.close();
   fs.rmSync(directory, { recursive: true });
 });
 
@@ -29,6 +64,88 @@ test("SQLite UI state store rejects writes without known keys", () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "ai-harness-ui-state-"));
   const store = createUiStateStore(path.join(directory, "state.sqlite"));
   assert.throws(() => store.set({ unknown: true }), /No valid UI state keys/);
+  store.close();
+  fs.rmSync(directory, { recursive: true });
+});
+
+test("SQLite UI state store migrates legacy state and discards browser-only widths", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "ai-harness-ui-state-"));
+  const databasePath = path.join(directory, "state.sqlite");
+  const legacy = new DatabaseSync(databasePath);
+  legacy.exec("CREATE TABLE ui_state (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL)");
+  const insert = legacy.prepare("INSERT INTO ui_state VALUES (?, ?, 1)");
+  insert.run("sidebarCollapsed", "true");
+  insert.run("sidebarWidth", "444");
+  insert.run("streamWidth", "555");
+  legacy.close();
+
+  const store = createUiStateStore(databasePath);
+  assert.deepEqual(store.getAll(), { sidebarCollapsed: true });
+  store.close();
+  const migrated = new DatabaseSync(databasePath, { readOnly: true });
+  assert.equal(migrated.prepare(
+    "SELECT count(*) AS count FROM sqlite_master WHERE type = 'table' AND name = 'ui_state'",
+  ).get().count, 0);
+  migrated.close();
+  fs.rmSync(directory, { recursive: true });
+});
+
+test("SQLite UI state store migrates JSON session columns into child tables", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "ai-harness-ui-state-"));
+  const databasePath = path.join(directory, "state.sqlite");
+  const legacy = new DatabaseSync(databasePath);
+  legacy.exec(`
+    CREATE TABLE sessions (
+      id TEXT PRIMARY KEY, title TEXT NOT NULL, workspace TEXT NOT NULL,
+      messages TEXT NOT NULL, events TEXT NOT NULL, updated_at INTEGER NOT NULL,
+      sort_order INTEGER NOT NULL
+    ) STRICT
+  `);
+  legacy.prepare("INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?, ?)").run(
+    "old", "Old chat", "/old", JSON.stringify([{ role: "agent", text: "Saved" }]),
+    JSON.stringify([{ title: "Tool completed", detail: { ok: true }, timestamp: 99 }]), 88, 0,
+  );
+  legacy.close();
+
+  const store = createUiStateStore(databasePath);
+  assert.deepEqual(store.getAll().sessions, [{
+    id: "old", title: "Old chat", workspace: "/old",
+    messages: [{ role: "agent", text: "Saved" }],
+    events: [{ title: "Tool completed", detail: { ok: true }, timestamp: 99 }],
+    updatedAt: 88,
+  }]);
+  store.close();
+  const migrated = new DatabaseSync(databasePath, { readOnly: true });
+  assert.equal(migrated.prepare("SELECT count(*) AS count FROM messages").get().count, 1);
+  assert.equal(migrated.prepare("SELECT count(*) AS count FROM events").get().count, 1);
+  assert.equal(migrated.prepare(
+    "SELECT count(*) AS count FROM sqlite_master WHERE name = 'sessions_legacy_json'",
+  ).get().count, 0);
+  migrated.close();
+  fs.rmSync(directory, { recursive: true });
+});
+
+test("SQLite UI state store migrates the single-provider schema", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "ai-harness-ui-state-"));
+  const databasePath = path.join(directory, "state.sqlite");
+  const legacy = new DatabaseSync(databasePath);
+  legacy.exec(`
+    CREATE TABLE providers (
+      provider TEXT PRIMARY KEY, base_url TEXT NOT NULL, api_key TEXT NOT NULL, updated_at INTEGER NOT NULL
+    ) STRICT;
+    CREATE TABLE provider_settings (
+      id INTEGER PRIMARY KEY, provider TEXT NOT NULL, model TEXT NOT NULL, updated_at INTEGER NOT NULL
+    ) STRICT;
+    INSERT INTO providers VALUES ('openai', 'https://api.openai.com/v1', 'secret', 1);
+    INSERT INTO provider_settings VALUES (1, 'openai', 'gpt-test', 1);
+  `);
+  legacy.close();
+
+  const store = createUiStateStore(databasePath);
+  assert.deepEqual(store.getAll().providers, [{
+    id: "openai", name: "openai", type: "openai", model: "gpt-test",
+    baseUrl: "https://api.openai.com/v1", apiKey: "secret", selected: true,
+  }]);
   store.close();
   fs.rmSync(directory, { recursive: true });
 });
