@@ -10,13 +10,17 @@ import { createModelClient } from "./lib/openai.js";
 import { CodingAgent } from "./lib/agent.js";
 import { createTools } from "./lib/tools.js";
 import { loadMcpTools } from "./lib/mcp.js";
+import { createUiStateStore } from "./lib/ui-state.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, "public");
 const configPath = path.join(process.cwd(), ".ai-harness/config.toml");
+const uiStateDatabasePath = path.join(process.cwd(), ".ai-harness/ui-state.sqlite");
 
 loadEnv(path.join(__dirname, ".env"));
 const port = Number(process.env.PORT || 3000);
+await fs.mkdir(path.dirname(uiStateDatabasePath), { recursive: true });
+const uiStateStore = createUiStateStore(uiStateDatabasePath);
 
 const CONTENT_TYPES = {
   ".css": "text/css; charset=utf-8",
@@ -191,6 +195,25 @@ async function handleModelsApi(req, res) {
   } catch (error) {
     json(res, 400, { ok: false, error: error.message });
   }
+}
+
+async function handleUiStateApi(req, res) {
+  if (req.method === "GET") {
+    json(res, 200, { ok: true, state: uiStateStore.getAll() });
+    return;
+  }
+  if (req.method === "PUT") {
+    try {
+      const body = JSON.parse(await readRequestBody(req, 50 * 1024 * 1024) || "{}");
+      uiStateStore.set(body.state);
+      json(res, 200, { ok: true });
+    } catch (error) {
+      json(res, 400, { ok: false, error: error.message });
+    }
+    return;
+  }
+  res.writeHead(405, { allow: "GET, PUT" });
+  res.end();
 }
 
 function resolvePublicPath(urlPath) {
@@ -657,6 +680,10 @@ const server = http.createServer(async (req, res) => {
   }
   if (url.pathname === "/api/models") {
     await handleModelsApi(req, res);
+    return;
+  }
+  if (url.pathname === "/api/ui-state") {
+    await handleUiStateApi(req, res);
     return;
   }
   await serveStatic(req, res);

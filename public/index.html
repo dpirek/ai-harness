@@ -62,6 +62,15 @@
         </footer>
       </aside>
 
+      <div
+        id="sidebarResizeHandle"
+        class="columnResizeHandle sidebarResizeHandle"
+        role="separator"
+        aria-label="Resize navigation column"
+        aria-orientation="vertical"
+        tabindex="0"
+      ></div>
+
       <main class="chat">
         <header class="chatTopbar">
           <span id="socketState" class="state state-idle">Offline</span>
@@ -97,7 +106,7 @@
 
       <div
         id="streamResizeHandle"
-        class="streamResizeHandle"
+        class="columnResizeHandle streamResizeHandle"
         role="separator"
         aria-label="Resize stream column"
         aria-orientation="vertical"
@@ -153,7 +162,7 @@
           </section>
 
           <footer class="settingsFooter">
-            <span id="settingsStatus" class="configStatus">Provider settings are stored in this browser.</span>
+            <span id="settingsStatus" class="configStatus">Provider settings are stored in SQLite.</span>
             <div>
               <button id="saveSettingsButton" class="primaryButton" type="submit">Save</button>
             </div>
@@ -222,7 +231,7 @@
           </section>
 
           <footer class="settingsFooter">
-            <span id="toolPermissionsStatus" class="configStatus">Tool permissions are stored in this browser.</span>
+            <span id="toolPermissionsStatus" class="configStatus">Tool permissions are stored in SQLite.</span>
             <div>
               <button id="saveToolPermissionsButton" class="primaryButton" type="submit">Save tools</button>
             </div>

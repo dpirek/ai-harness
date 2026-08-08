@@ -12,7 +12,7 @@ Key capabilities
 - Conversation state: supports multi-turn tool calls until a final answer is produced
 
 Requirements
-- Node.js 20+
+- Node.js 22.5+ (the web UI uses the built-in `node:sqlite` module)
 - OPENAI_API_KEY
 - No npm install required
 

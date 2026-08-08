@@ -6,7 +6,7 @@ and run commands inside the current workspace.
 
 ## Requirements
 
-- Node.js 20 or newer
+- Node.js 22.5 or newer (the web UI uses the built-in `node:sqlite` module)
 - An OpenAI API key
 
 No `npm install` is required.

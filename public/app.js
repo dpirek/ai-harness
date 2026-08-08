@@ -1,11 +1,7 @@
 import { appendMessageText } from "./lib/message-rendering.js";
 import {
   defaultProviderSettings,
-  loadProviderSettings,
-  loadToolPermissions,
   normalizeToolPermissions,
-  saveStoredProviderSettings,
-  saveStoredToolPermissions,
 } from "./lib/settings.js";
 import { CONFIG_TEMPLATES, mcpBlocks, quoteToml, setToolBlockEnabled } from "./lib/mcp-config.js";
 
@@ -66,6 +62,7 @@ const providerModelsStatus = document.querySelector("#providerModelsStatus");
 const toolPermissionInputs = [...document.querySelectorAll("[data-tool-permission]")];
 const appShell = document.querySelector("#appShell");
 const sidebarToggleButton = document.querySelector("#sidebarToggleButton");
+const sidebarResizeHandle = document.querySelector("#sidebarResizeHandle");
 const streamResizeHandle = document.querySelector("#streamResizeHandle");
 
 let socket;
@@ -78,10 +75,8 @@ let streamingAnswer = null;
 let attachedImages = [];
 let defaultWorkspace = ".";
 
-const STORAGE_KEY = "ai-harness.sessions";
-const SIDEBAR_STORAGE_KEY = "ai-harness.sidebarCollapsed";
-const STREAM_WIDTH_STORAGE_KEY = "ai-harness.streamWidth";
 const MIN_STREAM_WIDTH = 260;
+const MIN_SIDEBAR_WIDTH = 220;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
 let toolsConfigContent = "";
@@ -96,20 +91,28 @@ function createSession(title = "New chat") {
   };
 }
 
-function loadSessions() {
-  try {
-    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-    if (Array.isArray(stored) && stored.length > 0) {
-      return stored.map((session) => ({ ...session, workspace: session.workspace || defaultWorkspace }));
-    }
-  } catch {
-    localStorage.removeItem(STORAGE_KEY);
-  }
-  return [createSession("AI Harness Session")];
+let sessions = [];
+let providerSettings = defaultProviderSettings();
+let storedToolPermissions = normalizeToolPermissions();
+let sidebarWidth = 344;
+let streamWidth = 360;
+let uiStateSaveQueue = Promise.resolve();
+
+async function saveUiState(state) {
+  const response = await fetch("/api/ui-state", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ state }),
+  });
+  const payload = await response.json();
+  if (!payload.ok) throw new Error(payload.error || "Unable to save UI state.");
 }
 
-let sessions = loadSessions();
-activeSessionId = sessions[0].id;
+function persistUiState(state) {
+  uiStateSaveQueue = uiStateSaveQueue
+    .then(() => saveUiState(state))
+    .catch((error) => addEvent("UI state save failed", error.message));
+}
 
 function applySidebarState(collapsed) {
   appShell.classList.toggle("sidebar-collapsed", collapsed);
@@ -121,14 +124,39 @@ function applySidebarState(collapsed) {
   sidebarToggleButton.title = collapsed ? "Expand sidebar" : "Collapse sidebar";
 }
 
-function loadSidebarState() {
-  applySidebarState(localStorage.getItem(SIDEBAR_STORAGE_KEY) === "true");
-}
-
 function toggleSidebar() {
   const collapsed = !appShell.classList.contains("sidebar-collapsed");
-  localStorage.setItem(SIDEBAR_STORAGE_KEY, String(collapsed));
+  persistUiState({ sidebarCollapsed: collapsed });
   applySidebarState(collapsed);
+}
+
+function setSidebarWidth(width) {
+  const clamped = Math.max(width, MIN_SIDEBAR_WIDTH);
+  appShell.style.setProperty("--sidebar-width", `${clamped}px`);
+  sidebarResizeHandle.setAttribute("aria-valuemin", String(MIN_SIDEBAR_WIDTH));
+  sidebarResizeHandle.setAttribute("aria-valuenow", String(clamped));
+  sidebarWidth = clamped;
+  persistUiState({ sidebarWidth: clamped });
+}
+
+function startSidebarResize(event) {
+  if (event.button !== 0) return;
+  event.preventDefault();
+  appShell.classList.remove("sidebar-collapsed");
+  applySidebarState(false);
+  persistUiState({ sidebarCollapsed: false });
+  appShell.classList.add("resizing-sidebar");
+  sidebarResizeHandle.setPointerCapture(event.pointerId);
+  const move = (moveEvent) => setSidebarWidth(moveEvent.clientX);
+  const stop = () => {
+    appShell.classList.remove("resizing-sidebar");
+    sidebarResizeHandle.removeEventListener("pointermove", move);
+    sidebarResizeHandle.removeEventListener("pointerup", stop);
+    sidebarResizeHandle.removeEventListener("pointercancel", stop);
+  };
+  sidebarResizeHandle.addEventListener("pointermove", move);
+  sidebarResizeHandle.addEventListener("pointerup", stop);
+  sidebarResizeHandle.addEventListener("pointercancel", stop);
 }
 
 function clampStreamWidth(width) {
@@ -140,12 +168,8 @@ function setStreamWidth(width) {
   appShell.style.setProperty("--stream-width", `${clamped}px`);
   streamResizeHandle.setAttribute("aria-valuemin", String(MIN_STREAM_WIDTH));
   streamResizeHandle.setAttribute("aria-valuenow", String(clamped));
-  localStorage.setItem(STREAM_WIDTH_STORAGE_KEY, String(clamped));
-}
-
-function loadStreamWidth() {
-  const stored = Number(localStorage.getItem(STREAM_WIDTH_STORAGE_KEY));
-  setStreamWidth(Number.isFinite(stored) && stored > 0 ? stored : 360);
+  streamWidth = clamped;
+  persistUiState({ streamWidth: clamped });
 }
 
 function startStreamResize(event) {
@@ -170,7 +194,7 @@ function startStreamResize(event) {
 }
 
 function saveSessions() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
+  persistUiState({ sessions });
 }
 
 function activeSession() {
@@ -542,7 +566,8 @@ function currentProviderSettings() {
 
 function saveProviderSettings() {
   const settings = currentProviderSettings();
-  saveStoredProviderSettings(settings);
+  providerSettings = settings;
+  persistUiState({ providerSettings: settings });
   send({ type: "provider_settings", ...settings });
   workspaceMeta.textContent = `${settings.provider} · ${settings.model || "default model"}`;
   settingsStatus.textContent = "Provider settings saved";
@@ -557,7 +582,7 @@ function currentToolPermissions() {
   return permissions;
 }
 
-function renderToolPermissions(settings = loadToolPermissions()) {
+function renderToolPermissions(settings = storedToolPermissions) {
   const permissions = normalizeToolPermissions(settings);
   for (const input of toolPermissionInputs) {
     input.checked = permissions[input.dataset.toolPermission] === true;
@@ -566,7 +591,8 @@ function renderToolPermissions(settings = loadToolPermissions()) {
 
 function saveToolPermissions() {
   const permissions = currentToolPermissions();
-  saveStoredToolPermissions(permissions);
+  storedToolPermissions = permissions;
+  persistUiState({ toolPermissions: permissions });
   send({ type: "tool_permissions", permissions });
   toolPermissionsStatus.textContent = "Tool permissions saved";
   toolPermissionsStatus.dataset.state = "success";
@@ -595,7 +621,7 @@ function setModelOptions(models, selectedModel) {
   providerModelInput.value = selected;
 }
 
-function renderProviderSettings(settings = loadProviderSettings()) {
+function renderProviderSettings(settings = providerSettings) {
   providerSelect.value = ["openai", "ollama", "custom"].includes(settings.provider)
     ? settings.provider
     : "openai";
@@ -837,7 +863,7 @@ async function loadHealth() {
     }
     if (changed) saveSessions();
     renderWorkspace();
-    const settings = loadProviderSettings();
+    const settings = providerSettings;
     workspaceMeta.textContent = `${settings.provider || health.provider} · ${settings.model || health.model}`;
   } catch {
     workspaceMeta.textContent = "Server health unavailable";
@@ -851,8 +877,8 @@ function connect() {
 
   socket.addEventListener("open", () => {
     setState("Online", "state-online");
-    send({ type: "provider_settings", ...loadProviderSettings() });
-    send({ type: "tool_permissions", permissions: loadToolPermissions() });
+    send({ type: "provider_settings", ...providerSettings });
+    send({ type: "tool_permissions", permissions: storedToolPermissions });
     setBusy(false);
     addEvent("Socket connected");
   });
@@ -1033,21 +1059,30 @@ promptInput.addEventListener("keydown", (event) => {
 newChatButton.addEventListener("click", startNewChat);
 sidebarToggleButton.addEventListener("click", toggleSidebar);
 
+sidebarResizeHandle.addEventListener("pointerdown", startSidebarResize);
+sidebarResizeHandle.addEventListener("keydown", (event) => {
+  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+  event.preventDefault();
+  if (appShell.classList.contains("sidebar-collapsed")) {
+    applySidebarState(false);
+    persistUiState({ sidebarCollapsed: false });
+  }
+  setSidebarWidth(sidebarWidth + (event.key === "ArrowLeft" ? -24 : 24));
+});
+
 streamResizeHandle.addEventListener("pointerdown", startStreamResize);
 streamResizeHandle.addEventListener("keydown", (event) => {
   if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
   event.preventDefault();
-  const current = Number(localStorage.getItem(STREAM_WIDTH_STORAGE_KEY)) || 360;
-  setStreamWidth(current + (event.key === "ArrowLeft" ? 24 : -24));
+  setStreamWidth(streamWidth + (event.key === "ArrowLeft" ? 24 : -24));
 });
 window.addEventListener("resize", () => {
-  const current = Number(localStorage.getItem(STREAM_WIDTH_STORAGE_KEY)) || 360;
-  setStreamWidth(current);
+  setStreamWidth(streamWidth);
 });
 
 settingsButton.addEventListener("click", async () => {
   renderProviderSettings();
-  settingsStatus.textContent = "Provider settings are stored in this browser.";
+  settingsStatus.textContent = "Provider settings are stored in SQLite.";
   settingsStatus.dataset.state = "";
   settingsDialog.showModal();
   await loadProviderModels();
@@ -1056,7 +1091,7 @@ settingsButton.addEventListener("click", async () => {
 toolsButton.addEventListener("click", async () => {
   toolsDialog.showModal();
   renderToolPermissions();
-  toolPermissionsStatus.textContent = "Tool permissions are stored in this browser.";
+  toolPermissionsStatus.textContent = "Tool permissions are stored in SQLite.";
   toolPermissionsStatus.dataset.state = "";
 });
 
@@ -1148,12 +1183,40 @@ clearEventsButton.addEventListener("click", () => {
   eventList.replaceChildren();
 });
 
-loadHealth();
-connect();
-renderProviderSettings();
-loadSidebarState();
-loadStreamWidth();
-renderRecents();
-renderMessages();
-renderWorkspace();
-resizePromptInput();
+async function initialize() {
+  try {
+    const response = await fetch("/api/ui-state");
+    const payload = await response.json();
+    if (!payload.ok) throw new Error(payload.error || "Unable to load UI state.");
+    const state = payload.state || {};
+    sessions = Array.isArray(state.sessions) && state.sessions.length > 0
+      ? state.sessions.map((session) => ({ ...session, workspace: session.workspace || defaultWorkspace }))
+      : [createSession("AI Harness Session")];
+    providerSettings = { ...defaultProviderSettings(), ...(state.providerSettings || {}) };
+    storedToolPermissions = normalizeToolPermissions(state.toolPermissions);
+    sidebarWidth = Number.isFinite(Number(state.sidebarWidth)) && Number(state.sidebarWidth) > 0
+      ? Number(state.sidebarWidth)
+      : 344;
+    streamWidth = Number.isFinite(Number(state.streamWidth)) && Number(state.streamWidth) > 0
+      ? Number(state.streamWidth)
+      : 360;
+    applySidebarState(state.sidebarCollapsed === true);
+  } catch (error) {
+    sessions = [createSession("AI Harness Session")];
+    applySidebarState(false);
+    addEvent("UI state load failed", error.message);
+  }
+  activeSessionId = sessions[0].id;
+  setSidebarWidth(sidebarWidth);
+  setStreamWidth(streamWidth);
+  renderProviderSettings();
+  renderToolPermissions();
+  renderRecents();
+  renderMessages();
+  renderWorkspace();
+  resizePromptInput();
+  await loadHealth();
+  connect();
+}
+
+initialize();
