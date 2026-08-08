@@ -29,6 +29,12 @@ class HarnessSidebar extends BaseComponent {
         <span class="avatar"><img src="/logo.png" alt="" aria-hidden="true"></span>
         <div class="accountMeta"><strong>User Name</strong><span id="workspaceMeta">Connecting...</span></div>
       </footer>`;
+    this.querySelector("#newChatButton").addEventListener("click", () => this.emit("new-chat"));
+    this.querySelector("#sidebarToggleButton").addEventListener("click", () => this.emit("toggle-sidebar"));
+    const dialogs = { settingsButton: "providers", systemPromptsButton: "system-prompts", toolsButton: "tools", mcpButton: "mcp" };
+    for (const [id, modal] of Object.entries(dialogs)) {
+      this.querySelector(`#${id}`).addEventListener("click", () => this.emit("open-modal", { modal }));
+    }
   }
 }
 

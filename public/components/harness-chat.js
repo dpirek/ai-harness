@@ -29,6 +29,32 @@ class HarnessChat extends BaseComponent {
         </form>
       </footer>
       <button id="resetButton" class="resetFab" type="button">Reset</button>`;
+    const form = this.querySelector("#promptForm");
+    const input = this.querySelector("#promptInput");
+    const imageInput = this.querySelector("#imageInput");
+    form.addEventListener("submit", (event) => { event.preventDefault(); this.emit("submit-prompt"); });
+    this.querySelector("#addImageButton").addEventListener("click", () => imageInput.click());
+    imageInput.addEventListener("change", () => {
+      this.emit("images-selected", { files: Array.from(imageInput.files || []) });
+      imageInput.value = "";
+    });
+    input.addEventListener("input", () => { this.resizeInput(); this.emit("prompt-edited"); });
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); form.requestSubmit(); return; }
+      if (!event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && ["ArrowUp", "ArrowDown"].includes(event.key)) {
+        event.preventDefault(); this.emit("navigate-prompt-history", { direction: event.key === "ArrowUp" ? -1 : 1 });
+      }
+    });
+    this.querySelector("#toggleFilesColumnButton").addEventListener("click", () => this.emit("toggle-column", { column: "files" }));
+    this.querySelector("#toggleStreamColumnButton").addEventListener("click", () => this.emit("toggle-column", { column: "stream" }));
+    this.querySelector("#resetButton").addEventListener("click", () => this.emit("reset-chat"));
+  }
+
+  resizeInput() {
+    const input = this.querySelector("#promptInput");
+    input.style.height = "26px";
+    input.style.height = `${Math.min(input.scrollHeight, 168)}px`;
+    input.style.overflowY = input.scrollHeight > 168 ? "auto" : "hidden";
   }
 }
 

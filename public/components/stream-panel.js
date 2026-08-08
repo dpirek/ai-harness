@@ -15,6 +15,7 @@ class StreamPanel extends BaseComponent {
         <button id="clearEventsButton" type="button">Clear</button>
       </div>
       <ol id="eventList" class="eventList"></ol>`;
+    this.querySelector("#clearEventsButton").addEventListener("click", () => this.emit("clear-stream"));
   }
 }
 

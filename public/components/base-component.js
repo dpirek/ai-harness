@@ -87,6 +87,10 @@ class BaseComponent extends HTMLElement {
     this.clear();
     this.render();
   }
+
+  emit(name, detail) {
+    this.dispatchEvent(new CustomEvent(name, { bubbles: true, detail }));
+  }
 }
 
 export default BaseComponent;

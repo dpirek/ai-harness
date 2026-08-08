@@ -19,6 +19,14 @@ class WorkspacePanel extends BaseComponent {
       </div>
       <input id="workspaceInput" type="text" readonly hidden aria-label="Selected workspace directory">
       <div id="workspaceTree" class="workspaceTree"></div>`;
+    const input = this.querySelector("#workspaceInput");
+    input.addEventListener("change", () => this.emit("workspace-change"));
+    input.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault(); input.blur(); this.emit("focus-prompt");
+    });
+    this.querySelector("#refreshFilesButton").addEventListener("click", () => this.emit("refresh-workspace"));
+    this.querySelector("#selectWorkspaceRootButton").addEventListener("click", () => this.emit("choose-workspace"));
   }
 }
 

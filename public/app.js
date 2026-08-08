@@ -31,27 +31,21 @@ import {
 import SocketService from "./services/socket-service.js";
 
 const appShell = mountAppShell();
+const sidebarComponent = document.querySelector("harness-sidebar");
+const chatComponent = document.querySelector("harness-chat");
+const workspaceComponent = document.querySelector("workspace-panel");
+const streamComponent = document.querySelector("stream-panel");
 
 const socketState = document.querySelector("#socketState");
 const workspaceMeta = document.querySelector("#workspaceMeta");
 const workspaceInput = document.querySelector("#workspaceInput");
 const messages = document.querySelector("#messages");
 const eventList = document.querySelector("#eventList");
-const promptForm = document.querySelector("#promptForm");
 const promptInput = document.querySelector("#promptInput");
 const sendButton = document.querySelector("#sendButton");
-const addImageButton = document.querySelector("#addImageButton");
-const imageInput = document.querySelector("#imageInput");
 const imagePreviewList = document.querySelector("#imagePreviewList");
-const resetButton = document.querySelector("#resetButton");
-const clearEventsButton = document.querySelector("#clearEventsButton");
 const emptyState = document.querySelector("#emptyState");
-const newChatButton = document.querySelector("#newChatButton");
 const recentsList = document.querySelector("#recentsList");
-const settingsButton = document.querySelector("#settingsButton");
-const systemPromptsButton = document.querySelector("#systemPromptsButton");
-const toolsButton = document.querySelector("#toolsButton");
-const mcpButton = document.querySelector("#mcpButton");
 const settingsDialog = document.querySelector("#settingsDialog");
 const systemPromptsDialog = document.querySelector("#systemPromptsDialog");
 const systemPromptsForm = document.querySelector("#systemPromptsForm");
@@ -114,7 +108,6 @@ const toggleStreamColumnButton = document.querySelector("#toggleStreamColumnButt
 const filesResizeHandle = document.querySelector("#filesResizeHandle");
 const workspaceTreeElement = document.querySelector("#workspaceTree");
 const filesWorkspaceLabel = document.querySelector("#filesWorkspaceLabel");
-const refreshFilesButton = document.querySelector("#refreshFilesButton");
 const selectWorkspaceRootButton = document.querySelector("#selectWorkspaceRootButton");
 const workspacePickerDialog = document.querySelector("#workspacePickerDialog");
 const workspacePickerTree = document.querySelector("#workspacePickerTree");
@@ -1247,8 +1240,7 @@ function connect() {
   socketService.connect();
 }
 
-promptForm.addEventListener("submit", (event) => {
-  event.preventDefault();
+chatComponent.addEventListener("submit-prompt", () => {
   const prompt = promptInput.value.trim();
   if ((!prompt && attachedImages.length === 0) || runActive) return;
   const sessionId = activeSessionId;
@@ -1281,77 +1273,33 @@ promptForm.addEventListener("submit", (event) => {
   });
 });
 
-workspaceInput.addEventListener("change", saveActiveWorkspace);
-workspaceInput.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") {
-    event.preventDefault();
-    workspaceInput.blur();
-    promptInput.focus();
-  }
-});
+workspaceComponent.addEventListener("workspace-change", saveActiveWorkspace);
+workspaceComponent.addEventListener("focus-prompt", () => promptInput.focus());
+workspaceComponent.addEventListener("refresh-workspace", loadWorkspaceTree);
+workspaceComponent.addEventListener("choose-workspace", openWorkspacePicker);
+chatComponent.addEventListener("images-selected", async (event) => addImages(event.detail.files));
+chatComponent.addEventListener("prompt-edited", resetPromptHistoryCursor);
+chatComponent.addEventListener("navigate-prompt-history", (event) => navigatePromptHistory(event.detail.direction));
+chatComponent.addEventListener("toggle-column", (event) => toggleRightColumn(event.detail.column));
+sidebarComponent.addEventListener("new-chat", startNewChat);
+sidebarComponent.addEventListener("toggle-sidebar", toggleSidebar);
 
-addImageButton.addEventListener("click", () => {
-  imageInput.click();
-});
-
-imageInput.addEventListener("change", async () => {
-  await addImages(Array.from(imageInput.files || []));
-  imageInput.value = "";
-});
-
-promptInput.addEventListener("input", () => {
-  resetPromptHistoryCursor();
-  resizePromptInput();
-});
-promptInput.addEventListener("keydown", (event) => {
-  if (event.key === "Enter" && !event.shiftKey) {
-    event.preventDefault();
-    promptForm.requestSubmit();
-    return;
-  }
-  if (
-    !event.altKey &&
-    !event.ctrlKey &&
-    !event.metaKey &&
-    !event.shiftKey &&
-    (event.key === "ArrowUp" || event.key === "ArrowDown")
-  ) {
-    event.preventDefault();
-    navigatePromptHistory(event.key === "ArrowUp" ? -1 : 1);
-  }
-});
-
-newChatButton.addEventListener("click", startNewChat);
-sidebarToggleButton.addEventListener("click", toggleSidebar);
-toggleFilesColumnButton.addEventListener("click", () => toggleRightColumn("files"));
-toggleStreamColumnButton.addEventListener("click", () => toggleRightColumn("stream"));
-
-sidebarResizeHandle.addEventListener("pointerdown", startSidebarResize);
-sidebarResizeHandle.addEventListener("keydown", (event) => {
-  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-  event.preventDefault();
+sidebarResizeHandle.addEventListener("column-resize-start", (event) => startSidebarResize(event.detail.sourceEvent));
+sidebarResizeHandle.addEventListener("column-resize-key", (event) => {
   if (appShell.classList.contains("sidebar-collapsed")) {
     applySidebarState(false);
     persistUiState({ sidebarCollapsed: false });
   }
-  setSidebarWidth(sidebarWidth + (event.key === "ArrowLeft" ? -24 : 24));
+  setSidebarWidth(sidebarWidth + (event.detail.key === "ArrowLeft" ? -24 : 24));
 });
 
-streamResizeHandle.addEventListener("pointerdown", startStreamResize);
-streamResizeHandle.addEventListener("keydown", (event) => {
-  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-  event.preventDefault();
-  setStreamWidth(streamWidth + (event.key === "ArrowLeft" ? 24 : -24));
+streamResizeHandle.addEventListener("column-resize-start", (event) => startStreamResize(event.detail.sourceEvent));
+streamResizeHandle.addEventListener("column-resize-key", (event) => {
+  setStreamWidth(streamWidth + (event.detail.key === "ArrowLeft" ? 24 : -24));
 });
-filesResizeHandle.addEventListener("pointerdown", startFilesResize);
-filesResizeHandle.addEventListener("keydown", (event) => {
-  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-  event.preventDefault();
-  setFilesWidth(filesWidth + (event.key === "ArrowLeft" ? 24 : -24));
-});
-refreshFilesButton.addEventListener("click", loadWorkspaceTree);
-selectWorkspaceRootButton.addEventListener("click", () => {
-  openWorkspacePicker();
+filesResizeHandle.addEventListener("column-resize-start", (event) => startFilesResize(event.detail.sourceEvent));
+filesResizeHandle.addEventListener("column-resize-key", (event) => {
+  setFilesWidth(filesWidth + (event.detail.key === "ArrowLeft" ? 24 : -24));
 });
 closeWorkspacePickerButton.addEventListener("click", () => workspacePickerDialog.close());
 parentWorkspacePickerButton.addEventListener("click", async () => {
@@ -1376,42 +1324,32 @@ window.addEventListener("resize", () => {
   setFilesWidth(filesWidth);
 });
 
-settingsButton.addEventListener("click", async () => {
-  renderProvidersTable();
-  providerSettingsSection.classList.remove("editor-open");
-  providerEditor.hidden = true;
-  saveSettingsButton.hidden = true;
-  settingsStatus.textContent = "Provider settings are stored in SQLite.";
-  settingsStatus.dataset.state = "";
-  settingsDialog.showModal();
-});
-
-systemPromptsButton.addEventListener("click", async () => {
-  systemPromptEditor.hidden = true; systemPromptsList.hidden = false; saveSystemPromptButton.hidden = true;
-  systemPromptsDialog.showModal();
-  try { await loadSystemPrompts(); } catch (error) { systemPromptsStatus.textContent = error.message; systemPromptsStatus.dataset.state = "error"; }
+sidebarComponent.addEventListener("open-modal", async (event) => {
+  if (event.detail.modal === "providers") {
+    renderProvidersTable(); providerSettingsSection.classList.remove("editor-open");
+    providerEditor.hidden = true; saveSettingsButton.hidden = true;
+    settingsStatus.textContent = "Provider settings are stored in SQLite."; settingsStatus.dataset.state = "";
+    settingsDialog.showModal();
+  }
+  if (event.detail.modal === "system-prompts") {
+    systemPromptEditor.hidden = true; systemPromptsList.hidden = false; saveSystemPromptButton.hidden = true;
+    systemPromptsDialog.showModal();
+    try { await loadSystemPrompts(); } catch (error) { systemPromptsStatus.textContent = error.message; systemPromptsStatus.dataset.state = "error"; }
+  }
+  if (event.detail.modal === "tools") {
+    toolsDialog.showModal(); renderToolPermissions();
+    toolPermissionsStatus.textContent = "Tool permissions are stored in SQLite."; toolPermissionsStatus.dataset.state = "";
+  }
+  if (event.detail.modal === "mcp") {
+    mcpDialog.showModal(); mcpEditor.hidden = true; mcpTableToolbar.hidden = false;
+    document.querySelector(".toolsListPanel").hidden = false; renderToolTypeFields(); await loadTools();
+  }
 });
 
 closeSystemPromptsButton.addEventListener("click", () => systemPromptsDialog.close());
 systemPromptsForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   try { await saveSystemPrompt(); } catch (error) { systemPromptsStatus.textContent = error.message; systemPromptsStatus.dataset.state = "error"; }
-});
-
-toolsButton.addEventListener("click", async () => {
-  toolsDialog.showModal();
-  renderToolPermissions();
-  toolPermissionsStatus.textContent = "Tool permissions are stored in SQLite.";
-  toolPermissionsStatus.dataset.state = "";
-});
-
-mcpButton.addEventListener("click", async () => {
-  mcpDialog.showModal();
-  mcpEditor.hidden = true;
-  mcpTableToolbar.hidden = false;
-  document.querySelector(".toolsListPanel").hidden = false;
-  renderToolTypeFields();
-  await loadTools();
 });
 
 closeSettingsButton.addEventListener("click", () => {
@@ -1486,7 +1424,7 @@ autoApproveTemplateButton.addEventListener("click", () => {
   appendConfigTemplate(CONFIG_TEMPLATES.autoApprove);
 });
 
-resetButton.addEventListener("click", () => {
+chatComponent.addEventListener("reset-chat", () => {
   const session = activeSession();
   if (session) {
     session.messages = [];
@@ -1500,7 +1438,7 @@ resetButton.addEventListener("click", () => {
   send({ type: "reset", sessionId: activeSessionId });
 });
 
-clearEventsButton.addEventListener("click", () => {
+streamComponent.addEventListener("clear-stream", () => {
   const session = activeSession();
   if (session) {
     session.events = [];
