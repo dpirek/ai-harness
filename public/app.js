@@ -83,6 +83,29 @@ const appShell = document.querySelector("#appShell");
 const sidebarToggleButton = document.querySelector("#sidebarToggleButton");
 const sidebarResizeHandle = document.querySelector("#sidebarResizeHandle");
 const streamResizeHandle = document.querySelector("#streamResizeHandle");
+const toggleFilesColumnButton = document.querySelector("#toggleFilesColumnButton");
+const toggleStreamColumnButton = document.querySelector("#toggleStreamColumnButton");
+const filesResizeHandle = document.querySelector("#filesResizeHandle");
+const workspaceTreeElement = document.querySelector("#workspaceTree");
+const filesWorkspaceLabel = document.querySelector("#filesWorkspaceLabel");
+const refreshFilesButton = document.querySelector("#refreshFilesButton");
+const selectWorkspaceRootButton = document.querySelector("#selectWorkspaceRootButton");
+const workspacePickerDialog = document.querySelector("#workspacePickerDialog");
+const workspacePickerTree = document.querySelector("#workspacePickerTree");
+const workspacePickerPath = document.querySelector("#workspacePickerPath");
+const closeWorkspacePickerButton = document.querySelector("#closeWorkspacePickerButton");
+const parentWorkspacePickerButton = document.querySelector("#parentWorkspacePickerButton");
+const cancelWorkspacePickerButton = document.querySelector("#cancelWorkspacePickerButton");
+const confirmWorkspacePickerButton = document.querySelector("#confirmWorkspacePickerButton");
+const fileEditorDialog = document.querySelector("#fileEditorDialog");
+const fileEditorForm = document.querySelector("#fileEditorForm");
+const fileEditorTitle = document.querySelector("#fileEditorTitle");
+const fileEditorPath = document.querySelector("#fileEditorPath");
+const fileEditorContent = document.querySelector("#fileEditorContent");
+const fileEditorStatus = document.querySelector("#fileEditorStatus");
+const closeFileEditorButton = document.querySelector("#closeFileEditorButton");
+const cancelFileEditorButton = document.querySelector("#cancelFileEditorButton");
+const saveFileEditorButton = document.querySelector("#saveFileEditorButton");
 
 let socket;
 let runActive = false;
@@ -93,12 +116,21 @@ let promptHistoryDraft = "";
 let streamingAnswer = null;
 let attachedImages = [];
 let defaultWorkspace = ".";
+let workspaceBrowserRoot = null;
+let workspaceBrowserNodes = [];
+let pendingWorkspacePath = null;
+let workspacePickerRoot = null;
+let workspacePickerParent = null;
+let editingFilePath = null;
 
 const MIN_STREAM_WIDTH = 260;
 const MIN_SIDEBAR_WIDTH = 220;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const SIDEBAR_WIDTH_STORAGE_KEY = "ai-harness.sidebarWidth";
 const STREAM_WIDTH_STORAGE_KEY = "ai-harness.streamWidth";
+const FILES_WIDTH_STORAGE_KEY = "ai-harness.filesWidth";
+const FILES_VISIBLE_STORAGE_KEY = "ai-harness.filesVisible";
+const STREAM_VISIBLE_STORAGE_KEY = "ai-harness.streamVisible";
 
 let toolsConfigContent = "";
 let systemPrompts = [];
@@ -156,6 +188,7 @@ let editingProviderId = null;
 let storedToolPermissions = normalizeToolPermissions();
 let sidebarWidth = 344;
 let streamWidth = 360;
+let filesWidth = 300;
 let uiStateSaveQueue = Promise.resolve();
 
 async function saveUiState(state) {
@@ -189,6 +222,24 @@ function toggleSidebar() {
   const collapsed = !appShell.classList.contains("sidebar-collapsed");
   persistUiState({ sidebarCollapsed: collapsed });
   applySidebarState(collapsed);
+}
+
+function applyRightColumnState(column, visible) {
+  const isFiles = column === "files";
+  const className = isFiles ? "files-collapsed" : "stream-collapsed";
+  const button = isFiles ? toggleFilesColumnButton : toggleStreamColumnButton;
+  const label = isFiles ? "workspace" : "stream";
+  appShell.classList.toggle(className, !visible);
+  button.setAttribute("aria-pressed", String(visible));
+  button.title = `${visible ? "Hide" : "Show"} ${label} column`;
+  button.setAttribute("aria-label", button.title);
+}
+
+function toggleRightColumn(column) {
+  const isFiles = column === "files";
+  const visible = appShell.classList.contains(isFiles ? "files-collapsed" : "stream-collapsed");
+  localStorage.setItem(isFiles ? FILES_VISIBLE_STORAGE_KEY : STREAM_VISIBLE_STORAGE_KEY, String(visible));
+  applyRightColumnState(column, visible);
 }
 
 function setSidebarWidth(width) {
@@ -258,6 +309,199 @@ function startStreamResize(event) {
   streamResizeHandle.addEventListener("pointercancel", stop);
 }
 
+function setFilesWidth(width) {
+  const clamped = Math.max(width, 220);
+  appShell.style.setProperty("--files-width", `${clamped}px`);
+  filesResizeHandle.setAttribute("aria-valuemin", "220");
+  filesResizeHandle.setAttribute("aria-valuenow", String(clamped));
+  filesWidth = clamped;
+  localStorage.setItem(FILES_WIDTH_STORAGE_KEY, String(clamped));
+}
+
+function startFilesResize(event) {
+  if (event.button !== 0) return;
+  event.preventDefault();
+  appShell.classList.add("resizing-column");
+  filesResizeHandle.classList.add("is-resizing");
+  filesResizeHandle.setPointerCapture(event.pointerId);
+  const move = (moveEvent) => {
+    const visibleStreamWidth = appShell.classList.contains("stream-collapsed") ? 0 : streamWidth + 8;
+    setFilesWidth(window.innerWidth - moveEvent.clientX - visibleStreamWidth - 4);
+  };
+  const stop = () => {
+    appShell.classList.remove("resizing-column"); filesResizeHandle.classList.remove("is-resizing");
+    filesResizeHandle.removeEventListener("pointermove", move);
+    filesResizeHandle.removeEventListener("pointerup", stop);
+    filesResizeHandle.removeEventListener("pointercancel", stop);
+  };
+  filesResizeHandle.addEventListener("pointermove", move);
+  filesResizeHandle.addEventListener("pointerup", stop);
+  filesResizeHandle.addEventListener("pointercancel", stop);
+}
+
+function renderWorkspaceNodes(nodes, parent) {
+  for (const node of nodes) {
+    if (node.type === "directory") {
+      const details = document.createElement("details");
+      details.open = false;
+      const summary = document.createElement("summary");
+      summary.setAttribute("aria-expanded", "false");
+      details.addEventListener("toggle", () => {
+        summary.setAttribute("aria-expanded", String(details.open));
+      });
+      const chevron = document.createElement("span"); chevron.className = "treeChevron"; chevron.textContent = "›";
+      const icon = document.createElement("span"); icon.className = "treeIcon"; icon.textContent = "▱";
+      const name = document.createElement("span"); name.className = "workspaceFileName"; name.textContent = node.name;
+      const select = document.createElement("button"); select.type = "button"; select.className = "selectFolderButton";
+      select.textContent = "✓"; select.title = `Use ${node.name} as workspace`; select.setAttribute("aria-label", select.title);
+      select.addEventListener("click", (event) => {
+        event.preventDefault(); event.stopPropagation(); workspaceInput.value = node.path; saveActiveWorkspace();
+      });
+      summary.append(chevron, icon, name, select);
+      const children = document.createElement("div"); children.className = "workspaceChildren";
+      renderWorkspaceNodes(node.children || [], children); details.append(summary, children); parent.append(details);
+    } else {
+      const file = document.createElement("div"); file.className = "workspaceFile";
+      const spacer = document.createElement("span"); spacer.className = "treeChevron";
+      const extension = node.name.split(".").pop().toLowerCase();
+      const fileIcons = { js: "JS", mjs: "JS", cjs: "JS", json: "{}", html: "‹›", css: "#", md: "ⓘ", png: "▧", jpg: "▧", jpeg: "▧", svg: "◇" };
+      const icon = document.createElement("span"); icon.className = `treeIcon treeIcon-${extension}`; icon.textContent = fileIcons[extension] || "·";
+      const name = document.createElement("span"); name.className = "workspaceFileName"; name.textContent = node.name;
+      file.tabIndex = 0; file.setAttribute("role", "button"); file.setAttribute("aria-label", `Edit ${node.name}`);
+      file.addEventListener("click", () => openFileEditor(node));
+      file.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault(); openFileEditor(node);
+      });
+      file.append(spacer, icon, name); parent.append(file);
+    }
+  }
+}
+
+async function openFileEditor(node) {
+  const workspace = activeSession()?.workspace || defaultWorkspace;
+  editingFilePath = node.path;
+  fileEditorTitle.textContent = node.name;
+  fileEditorPath.textContent = node.path;
+  fileEditorContent.value = "";
+  fileEditorContent.disabled = true;
+  saveFileEditorButton.disabled = true;
+  fileEditorStatus.textContent = "Loading…";
+  fileEditorDialog.showModal();
+  try {
+    const response = await fetch(`/api/workspace-file?workspace=${encodeURIComponent(workspace)}&path=${encodeURIComponent(node.path)}`);
+    const payload = await response.json();
+    if (!payload.ok) throw new Error(payload.error || "Unable to open file.");
+    if (editingFilePath !== node.path || !fileEditorDialog.open) return;
+    fileEditorContent.value = payload.content;
+    fileEditorContent.disabled = false;
+    saveFileEditorButton.disabled = false;
+    fileEditorStatus.textContent = "";
+    fileEditorContent.focus();
+  } catch (error) {
+    fileEditorStatus.textContent = error.message;
+  }
+}
+
+async function saveEditedFile() {
+  if (!editingFilePath) return;
+  saveFileEditorButton.disabled = true;
+  fileEditorStatus.textContent = "Saving…";
+  try {
+    const response = await fetch("/api/workspace-file", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        workspace: activeSession()?.workspace || defaultWorkspace,
+        path: editingFilePath,
+        content: fileEditorContent.value,
+      }),
+    });
+    const payload = await response.json();
+    if (!payload.ok) throw new Error(payload.error || "Unable to save file.");
+    fileEditorStatus.textContent = "Saved";
+    addEvent("File saved", editingFilePath);
+  } catch (error) {
+    fileEditorStatus.textContent = error.message;
+  } finally {
+    saveFileEditorButton.disabled = false;
+  }
+}
+
+async function loadWorkspaceTree() {
+  const selectedWorkspace = activeSession()?.workspace || defaultWorkspace;
+  filesWorkspaceLabel.textContent = selectedWorkspace;
+  workspaceTreeElement.innerHTML = '<p class="workspaceTreeStatus">Loading files…</p>';
+  selectWorkspaceRootButton.disabled = true;
+  try {
+    const response = await fetch(`/api/workspace-tree?workspace=${encodeURIComponent(selectedWorkspace)}`);
+    const payload = await response.json();
+    if (!payload.ok) throw new Error(payload.error || "Unable to load files.");
+    workspaceBrowserRoot = payload.root;
+    workspaceBrowserNodes = payload.tree || [];
+    selectWorkspaceRootButton.disabled = false;
+    selectWorkspaceRootButton.title = "Choose workspace folder";
+    workspaceTreeElement.replaceChildren(); renderWorkspaceNodes(workspaceBrowserNodes, workspaceTreeElement);
+  } catch (error) {
+    workspaceBrowserRoot = null;
+    workspaceBrowserNodes = [];
+    workspaceTreeElement.innerHTML = "";
+    const status = document.createElement("p"); status.className = "workspaceTreeStatus"; status.textContent = error.message;
+    workspaceTreeElement.append(status);
+  }
+}
+
+function chooseWorkspacePickerPath(path) {
+  pendingWorkspacePath = path;
+  workspacePickerPath.textContent = path;
+  workspacePickerTree.querySelectorAll(".workspacePickerOption").forEach((button) => {
+    button.classList.toggle("selected", button.dataset.path === path);
+  });
+}
+
+function renderWorkspacePickerNodes(nodes, parent) {
+  for (const node of nodes.filter((item) => item.type === "directory")) {
+    const details = document.createElement("details"); details.open = false;
+    const summary = document.createElement("summary"); summary.className = "workspacePickerOption";
+    summary.dataset.path = node.path; summary.setAttribute("aria-expanded", "false");
+    summary.innerHTML = `<span class="workspacePickerChevron" aria-hidden="true">›</span><span aria-hidden="true">▱</span><span></span>`;
+    summary.lastElementChild.textContent = node.name;
+    summary.addEventListener("click", () => chooseWorkspacePickerPath(node.path));
+    summary.addEventListener("dblclick", () => { chooseWorkspacePickerPath(node.path); confirmWorkspacePickerButton.click(); });
+    details.addEventListener("toggle", () => summary.setAttribute("aria-expanded", String(details.open)));
+    const children = document.createElement("div"); children.className = "workspacePickerChildren";
+    renderWorkspacePickerNodes(node.children || [], children);
+    details.append(summary, children); parent.append(details);
+  }
+}
+
+function renderWorkspacePicker(rootPath, nodes) {
+  workspacePickerTree.replaceChildren();
+  const root = document.createElement("button"); root.type = "button"; root.className = "workspacePickerOption";
+  root.dataset.path = rootPath; root.textContent = `▱  ${rootPath.split("/").pop() || rootPath}`;
+  root.addEventListener("click", () => chooseWorkspacePickerPath(rootPath));
+  workspacePickerTree.append(root); renderWorkspacePickerNodes(nodes, workspacePickerTree);
+}
+
+async function loadWorkspacePickerRoot(rootPath) {
+  parentWorkspacePickerButton.disabled = true;
+  workspacePickerTree.innerHTML = '<p class="workspaceTreeStatus">Loading folders…</p>';
+  const response = await fetch(`/api/workspace-tree?workspace=${encodeURIComponent(rootPath)}`);
+  const payload = await response.json();
+  if (!payload.ok) throw new Error(payload.error || "Unable to browse folder.");
+  workspacePickerRoot = payload.root;
+  workspacePickerParent = payload.parent;
+  parentWorkspacePickerButton.disabled = workspacePickerParent === workspacePickerRoot;
+  renderWorkspacePicker(workspacePickerRoot, payload.tree || []);
+  chooseWorkspacePickerPath(workspacePickerRoot);
+}
+
+async function openWorkspacePicker() {
+  if (!workspaceBrowserRoot) return;
+  workspacePickerDialog.showModal();
+  try { await loadWorkspacePickerRoot(workspaceBrowserRoot); } catch (error) { workspacePickerPath.textContent = error.message; }
+}
+
 function saveSessions() {
   persistUiState({ sessions });
 }
@@ -280,10 +524,12 @@ function saveActiveWorkspace() {
   }
   if (workspace === session.workspace) return;
   session.workspace = workspace;
+  filesWorkspaceLabel.textContent = workspace;
   session.updatedAt = Date.now();
   saveSessions();
   send({ type: "reset", sessionId: session.id });
   addEvent("Workspace selected", workspace);
+  loadWorkspaceTree();
 }
 
 function titleFromPrompt(prompt) {
@@ -519,6 +765,7 @@ function renderRecents() {
       renderMessages();
       renderEvents();
       renderWorkspace();
+      loadWorkspaceTree();
       addEvent("Opened recent chat", session.title);
     });
     const deleteButton = document.createElement("button");
@@ -540,6 +787,7 @@ function renderRecents() {
       renderMessages();
       renderEvents();
       renderWorkspace();
+      loadWorkspaceTree();
     });
     row.append(button, deleteButton);
     recentsList.append(row);
@@ -556,6 +804,7 @@ function startNewChat() {
   renderMessages();
   renderWorkspace();
   renderEvents();
+  loadWorkspaceTree();
   addEvent("New chat started");
 }
 
@@ -1291,6 +1540,8 @@ promptInput.addEventListener("keydown", (event) => {
 
 newChatButton.addEventListener("click", startNewChat);
 sidebarToggleButton.addEventListener("click", toggleSidebar);
+toggleFilesColumnButton.addEventListener("click", () => toggleRightColumn("files"));
+toggleStreamColumnButton.addEventListener("click", () => toggleRightColumn("stream"));
 
 sidebarResizeHandle.addEventListener("pointerdown", startSidebarResize);
 sidebarResizeHandle.addEventListener("keydown", (event) => {
@@ -1309,8 +1560,37 @@ streamResizeHandle.addEventListener("keydown", (event) => {
   event.preventDefault();
   setStreamWidth(streamWidth + (event.key === "ArrowLeft" ? 24 : -24));
 });
+filesResizeHandle.addEventListener("pointerdown", startFilesResize);
+filesResizeHandle.addEventListener("keydown", (event) => {
+  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+  event.preventDefault();
+  setFilesWidth(filesWidth + (event.key === "ArrowLeft" ? 24 : -24));
+});
+refreshFilesButton.addEventListener("click", loadWorkspaceTree);
+selectWorkspaceRootButton.addEventListener("click", () => {
+  openWorkspacePicker();
+});
+closeWorkspacePickerButton.addEventListener("click", () => workspacePickerDialog.close());
+parentWorkspacePickerButton.addEventListener("click", async () => {
+  if (!workspacePickerParent) return;
+  try { await loadWorkspacePickerRoot(workspacePickerParent); } catch (error) { workspacePickerPath.textContent = error.message; }
+});
+cancelWorkspacePickerButton.addEventListener("click", () => workspacePickerDialog.close());
+confirmWorkspacePickerButton.addEventListener("click", () => {
+  if (!pendingWorkspacePath) return;
+  workspaceInput.value = pendingWorkspacePath;
+  workspacePickerDialog.close();
+  saveActiveWorkspace();
+});
+closeFileEditorButton.addEventListener("click", () => fileEditorDialog.close());
+cancelFileEditorButton.addEventListener("click", () => fileEditorDialog.close());
+fileEditorForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  saveEditedFile();
+});
 window.addEventListener("resize", () => {
   setStreamWidth(streamWidth);
+  setFilesWidth(filesWidth);
 });
 
 settingsButton.addEventListener("click", async () => {
@@ -1467,13 +1747,17 @@ async function initialize() {
     storedToolPermissions = normalizeToolPermissions(state.toolPermissions);
     const localSidebarWidth = Number(localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY));
     const localStreamWidth = Number(localStorage.getItem(STREAM_WIDTH_STORAGE_KEY));
+    const localFilesWidth = Number(localStorage.getItem(FILES_WIDTH_STORAGE_KEY));
     sidebarWidth = Number.isFinite(localSidebarWidth) && localSidebarWidth > 0
       ? localSidebarWidth
       : 344;
     streamWidth = Number.isFinite(localStreamWidth) && localStreamWidth > 0
       ? localStreamWidth
       : 360;
+    filesWidth = Number.isFinite(localFilesWidth) && localFilesWidth > 0 ? localFilesWidth : 300;
     applySidebarState(state.sidebarCollapsed === true);
+    applyRightColumnState("files", localStorage.getItem(FILES_VISIBLE_STORAGE_KEY) !== "false");
+    applyRightColumnState("stream", localStorage.getItem(STREAM_VISIBLE_STORAGE_KEY) !== "false");
   } catch (error) {
     sessions = [createSession("AI Harness Session")];
     applySidebarState(false);
@@ -1484,6 +1768,7 @@ async function initialize() {
     : sessions[0].id;
   setSidebarWidth(sidebarWidth);
   setStreamWidth(streamWidth);
+  setFilesWidth(filesWidth);
   renderProviderSettings();
   renderToolPermissions();
   renderRecents();
@@ -1492,6 +1777,7 @@ async function initialize() {
   renderWorkspace();
   resizePromptInput();
   await loadHealth();
+  await loadWorkspaceTree();
   connect();
 }
 

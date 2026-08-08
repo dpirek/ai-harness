@@ -254,6 +254,81 @@ async function handleSystemPromptsApi(req, res) {
   res.writeHead(405, { allow: "GET, PUT" }); res.end();
 }
 
+async function workspaceTree(root, limit = 2500) {
+  let count = 0;
+  const ignored = new Set([".git", ".ai-harness", "node_modules", "db"]);
+  async function visit(directory) {
+    let entries;
+    try {
+      entries = await fs.readdir(directory, { withFileTypes: true });
+    } catch (error) {
+      if (error.code === "EACCES" || error.code === "EPERM") return [];
+      throw error;
+    }
+    const nodes = [];
+    for (const entry of entries.sort((a, b) => Number(b.isDirectory()) - Number(a.isDirectory()) || a.name.localeCompare(b.name))) {
+      if (ignored.has(entry.name) || count >= limit) continue;
+      count += 1;
+      const absolute = path.join(directory, entry.name);
+      nodes.push(entry.isDirectory()
+        ? { name: entry.name, path: absolute, type: "directory", children: await visit(absolute) }
+        : { name: entry.name, path: absolute, type: "file" });
+    }
+    return nodes;
+  }
+  return visit(root);
+}
+
+async function handleWorkspaceTreeApi(req, res, url) {
+  if (req.method !== "GET") { res.writeHead(405, { allow: "GET" }); res.end(); return; }
+  try {
+    const root = await resolveWorkspace(url.searchParams.get("workspace"));
+    json(res, 200, { ok: true, root, parent: path.dirname(root), tree: await workspaceTree(root) });
+  } catch (error) {
+    json(res, 400, { ok: false, error: error.message });
+  }
+}
+
+async function resolveWorkspaceFile(workspace, requestedPath) {
+  const root = await resolveWorkspace(workspace);
+  if (typeof requestedPath !== "string" || !requestedPath.trim()) throw new Error("Select a file.");
+  const candidate = path.resolve(root, requestedPath.trim());
+  const realFile = await fs.realpath(candidate);
+  const relative = path.relative(root, realFile);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) throw new Error("File is outside the selected workspace.");
+  const stat = await fs.stat(realFile);
+  if (!stat.isFile()) throw new Error("Selected path is not a file.");
+  return { root, file: realFile, stat };
+}
+
+async function handleWorkspaceFileApi(req, res, url) {
+  try {
+    if (req.method === "GET") {
+      const { file, stat } = await resolveWorkspaceFile(
+        url.searchParams.get("workspace"),
+        url.searchParams.get("path"),
+      );
+      if (stat.size > 2_000_000) throw new Error("File is too large to edit (2 MB maximum).");
+      const content = await fs.readFile(file, "utf8");
+      if (content.includes("\0")) throw new Error("Binary files cannot be edited here.");
+      json(res, 200, { ok: true, path: file, content });
+      return;
+    }
+    if (req.method === "PUT") {
+      const body = JSON.parse(await readRequestBody(req, 2_100_000) || "{}");
+      if (typeof body.content !== "string") throw new Error("Expected file content.");
+      if (Buffer.byteLength(body.content) > 2_000_000) throw new Error("File is too large to save (2 MB maximum).");
+      const { file } = await resolveWorkspaceFile(body.workspace, body.path);
+      await fs.writeFile(file, body.content, "utf8");
+      json(res, 200, { ok: true, path: file });
+      return;
+    }
+    res.writeHead(405, { allow: "GET, PUT" }); res.end();
+  } catch (error) {
+    json(res, 400, { ok: false, error: error.message });
+  }
+}
+
 function resolvePublicPath(urlPath) {
   const decoded = decodeURIComponent(urlPath);
   const target = decoded === "/" ? "/index.html" : decoded;
@@ -735,6 +810,14 @@ const server = http.createServer(async (req, res) => {
   }
   if (url.pathname === "/api/system-prompts") {
     await handleSystemPromptsApi(req, res);
+    return;
+  }
+  if (url.pathname === "/api/workspace-tree") {
+    await handleWorkspaceTreeApi(req, res, url);
+    return;
+  }
+  if (url.pathname === "/api/workspace-file") {
+    await handleWorkspaceFileApi(req, res, url);
     return;
   }
   await serveStatic(req, res);
