@@ -233,6 +233,31 @@ code {
   gap: 3px;
 }
 
+.recentRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 2px;
+}
+
+.sidebarSection .deleteConversationButton {
+  display: grid;
+  width: 32px;
+  height: 40px;
+  min-height: 40px;
+  place-items: center;
+  border-radius: 8px;
+  padding: 0;
+  color: var(--faint);
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.sidebarSection .deleteConversationButton:hover {
+  background: #2a1716;
+  color: #ff8f87;
+}
+
 .recents button,
 .recentsList button {
   min-height: 40px;
@@ -346,6 +371,14 @@ code {
   font-weight: 750;
   text-align: center;
   text-overflow: clip;
+}
+
+.app.sidebar-collapsed .recentRow {
+  display: block;
+}
+
+.app.sidebar-collapsed .deleteConversationButton {
+  display: none;
 }
 
 .app.sidebar-collapsed .recents {

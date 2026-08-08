@@ -501,6 +501,8 @@ function renderRecents() {
   }
 
   for (const session of sessions) {
+    const row = document.createElement("div");
+    row.className = "recentRow";
     const button = document.createElement("button");
     button.type = "button";
     button.title = session.title || "New chat";
@@ -519,7 +521,28 @@ function renderRecents() {
       renderWorkspace();
       addEvent("Opened recent chat", session.title);
     });
-    recentsList.append(button);
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "deleteConversationButton";
+    deleteButton.title = `Delete ${session.title || "conversation"}`;
+    deleteButton.setAttribute("aria-label", `Delete ${session.title || "conversation"}`);
+    deleteButton.textContent = "×";
+    deleteButton.addEventListener("click", () => {
+      if (runActive && session.id === activeSessionId) return;
+      if (!window.confirm(`Delete conversation “${session.title || "New chat"}”?`)) return;
+      const deletingActive = session.id === activeSessionId;
+      sessions = sessions.filter((candidate) => candidate.id !== session.id);
+      if (sessions.length === 0) sessions = [createSession("AI Harness Session")];
+      if (deletingActive) activeSessionId = sessions[0].id;
+      persistUiState({ sessions, activeSessionId });
+      send({ type: "reset", sessionId: session.id });
+      renderRecents();
+      renderMessages();
+      renderEvents();
+      renderWorkspace();
+    });
+    row.append(button, deleteButton);
+    recentsList.append(row);
   }
 }
 
