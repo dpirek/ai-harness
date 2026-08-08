@@ -19,3 +19,5 @@ class StreamPanel extends BaseComponent {
 }
 
 customElements.define("stream-panel", StreamPanel);
+
+export default StreamPanel;

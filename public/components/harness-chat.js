@@ -33,3 +33,5 @@ class HarnessChat extends BaseComponent {
 }
 
 customElements.define("harness-chat", HarnessChat);
+
+export default HarnessChat;

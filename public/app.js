@@ -1,8 +1,9 @@
-import "./components/harness-sidebar.js";
-import "./components/harness-chat.js";
-import "./components/workspace-panel.js";
-import "./components/stream-panel.js";
-import "./components/column-resize-handle.js";
+import HarnessSidebar from "./components/harness-sidebar.js";
+import HarnessChat from "./components/harness-chat.js";
+import WorkspacePanel from "./components/workspace-panel.js";
+import StreamPanel from "./components/stream-panel.js";
+import ColumnResizeHandle from "./components/column-resize-handle.js";
+import { mountAppShell } from "./components/app-shell.js";
 import { appendMessageText } from "./lib/message-rendering.js";
 import {
   defaultProviderSettings,
@@ -28,6 +29,8 @@ import {
   saveSystemPrompt as persistSystemPrompt,
 } from "./services/settings-api.js";
 import SocketService from "./services/socket-service.js";
+
+const appShell = mountAppShell();
 
 const socketState = document.querySelector("#socketState");
 const workspaceMeta = document.querySelector("#workspaceMeta");
@@ -103,7 +106,6 @@ const providerApiKeyField = document.querySelector("#providerApiKeyField");
 const refreshModelsButton = document.querySelector("#refreshModelsButton");
 const providerModelsStatus = document.querySelector("#providerModelsStatus");
 const toolPermissionInputs = [...document.querySelectorAll("[data-tool-permission]")];
-const appShell = document.querySelector("#appShell");
 const sidebarToggleButton = document.querySelector("#sidebarToggleButton");
 const sidebarResizeHandle = document.querySelector("#sidebarResizeHandle");
 const streamResizeHandle = document.querySelector("#streamResizeHandle");

@@ -33,3 +33,5 @@ class HarnessSidebar extends BaseComponent {
 }
 
 customElements.define("harness-sidebar", HarnessSidebar);
+
+export default HarnessSidebar;

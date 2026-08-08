@@ -23,3 +23,5 @@ class WorkspacePanel extends BaseComponent {
 }
 
 customElements.define("workspace-panel", WorkspacePanel);
+
+export default WorkspacePanel;

@@ -11,3 +11,5 @@ class ColumnResizeHandle extends BaseComponent {
 }
 
 customElements.define("column-resize-handle", ColumnResizeHandle);
+
+export default ColumnResizeHandle;
