@@ -10,132 +10,22 @@
   </head>
   <body>
     <div id="appShell" class="app">
-      <aside class="sidebar" aria-label="Conversation navigation">
-        <header class="sidebarTop">
-          <div class="brand">
-            <img src="/logo.png" alt="" aria-hidden="true">
-            <span>Harness</span>
-          </div>
-          <button
-            id="sidebarToggleButton"
-            class="sidebarToggle"
-            type="button"
-            aria-label="Collapse sidebar"
-            aria-pressed="false"
-            title="Collapse sidebar"
-          >☰</button>
-        </header>
+      <harness-sidebar class="sidebar"></harness-sidebar>
 
-        <nav class="navList" aria-label="Main">
-          <button id="newChatButton" type="button" title="New chat">
-            <span class="navIcon">✎</span><span class="navLabel">New chat</span>
-          </button>
-          <button id="settingsButton" type="button" title="Providers">
-            <span class="navIcon">◇</span><span class="navLabel">Providers</span>
-          </button>
-          <button id="systemPromptsButton" type="button" title="System prompts">
-            <span class="navIcon">¶</span><span class="navLabel">System prompts</span>
-          </button>
-          <button id="toolsButton" type="button" title="Tools">
-            <span class="navIcon">⚒</span><span class="navLabel">Tools</span>
-          </button>
-          <button id="mcpButton" type="button" title="MCP configuration">
-            <span class="navIcon">⛓</span><span class="navLabel">MCP configuration</span>
-          </button>
-          <!--
-          <button type="button"><span class="navIcon">◎</span>Plugins</button>
-          <button type="button"><span class="navIcon">▥</span>Library</button>
-          <button type="button"><span class="navIcon">▭</span>Projects</button>
-          <button type="button"><span class="navIcon">◷</span>Scheduled</button>
-          <button type="button"><span class="navIcon">◎</span>Plugins</button>
-          <button type="button"><span class="navIcon">…</span>More</button> -->
-        </nav>
+      <column-resize-handle id="sidebarResizeHandle" class="columnResizeHandle sidebarResizeHandle"
+        label="Resize navigation column"></column-resize-handle>
 
-        <section class="sidebarSection recents" aria-label="Recent conversations">
-          <h2>Recents</h2>
-          <div id="recentsList" class="recentsList"></div>
-        </section>
+      <harness-chat class="chat"></harness-chat>
 
-        <footer class="account">
-          <span class="avatar"><img src="/logo.png" alt="" aria-hidden="true"></span>
-          <div class="accountMeta">
-            <strong>User Name</strong>
-            <span id="workspaceMeta">Connecting...</span>
-          </div>
-        </footer>
-      </aside>
+      <column-resize-handle id="filesResizeHandle" class="columnResizeHandle filesResizeHandle"
+        label="Resize workspace files column"></column-resize-handle>
 
-      <div
-        id="sidebarResizeHandle"
-        class="columnResizeHandle sidebarResizeHandle"
-        role="separator"
-        aria-label="Resize navigation column"
-        aria-orientation="vertical"
-        tabindex="0"
-      ></div>
+      <workspace-panel class="filesColumn"></workspace-panel>
 
-      <main class="chat">
-        <header class="chatTopbar">
-          <span id="socketState" class="state state-idle">Offline</span>
-          <div class="columnVisibilityControls" aria-label="Right column visibility">
-            <button id="toggleFilesColumnButton" type="button" aria-label="Hide workspace column" aria-pressed="true" title="Hide workspace column"><span aria-hidden="true">▱</span></button>
-            <button id="toggleStreamColumnButton" type="button" aria-label="Hide stream column" aria-pressed="true" title="Hide stream column"><span aria-hidden="true">◉</span></button>
-          </div>
-        </header>
+      <column-resize-handle id="streamResizeHandle" class="columnResizeHandle streamResizeHandle"
+        label="Resize stream column"></column-resize-handle>
 
-        <section id="messages" class="messages" aria-live="polite">
-          <div id="emptyState" class="emptyState">Ask the harness to inspect, edit, or explain this workspace.</div>
-        </section>
-
-        <footer class="composerWrap">
-          <form id="promptForm" class="composer">
-            <div id="imagePreviewList" class="imagePreviewList" aria-live="polite"></div>
-            <input id="imageInput" type="file" accept="image/*" multiple hidden>
-            <button id="addImageButton" class="composerIcon" type="button" aria-label="Add image" title="Add image">＋</button>
-            <textarea
-              id="promptInput"
-              name="prompt"
-              rows="1"
-              placeholder="Ask AI Harness"
-              required
-            ></textarea>
-            <button id="sendButton" class="sendButton" type="submit" aria-label="Send">↑</button>
-          </form>
-        </footer>
-
-        <button id="resetButton" class="resetFab" type="button">Reset</button>
-      </main>
-
-      <div
-        id="filesResizeHandle"
-        class="columnResizeHandle filesResizeHandle"
-        role="separator"
-        aria-label="Resize workspace files column"
-        aria-orientation="vertical"
-        tabindex="0"
-      ></div>
-
-      <aside class="filesColumn" aria-label="Workspace files">
-        <div class="filesHeader"><div><h2>Workspace</h2><span id="filesWorkspaceLabel">Files</span></div>
-          <div class="filesHeaderActions"><button id="selectWorkspaceRootButton" type="button" title="Choose workspace folder" aria-label="Choose workspace folder">▱</button>
-          <button id="refreshFilesButton" type="button" title="Refresh files" aria-label="Refresh files">↻</button></div></div>
-        <input id="workspaceInput" type="text" readonly hidden aria-label="Selected workspace directory">
-        <div id="workspaceTree" class="workspaceTree"></div>
-      </aside>
-
-      <div id="streamResizeHandle" class="columnResizeHandle streamResizeHandle" role="separator"
-        aria-label="Resize stream column" aria-orientation="vertical" tabindex="0"></div>
-
-      <aside class="streamColumn" aria-label="Live interaction stream">
-        <div class="streamHeader">
-          <div>
-            <h2>Stream</h2>
-            <span>Live interactions</span>
-          </div>
-          <button id="clearEventsButton" type="button">Clear</button>
-        </div>
-        <ol id="eventList" class="eventList"></ol>
-      </aside>
+      <stream-panel class="streamColumn"></stream-panel>
 
       <dialog id="workspacePickerDialog" class="workspacePickerDialog">
         <form method="dialog" class="workspacePickerPanel">

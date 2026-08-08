@@ -1,3 +1,8 @@
+import "./components/harness-sidebar.js";
+import "./components/harness-chat.js";
+import "./components/workspace-panel.js";
+import "./components/stream-panel.js";
+import "./components/column-resize-handle.js";
 import { appendMessageText } from "./lib/message-rendering.js";
 import {
   defaultProviderSettings,
