@@ -8,19 +8,9 @@ class FileEditorModal extends BaseComponent {
   }
 
   render() {
-    this.innerHTML = `
-<dialog id="fileEditorDialog" class="fileEditorDialog">
-  <form id="fileEditorForm" class="fileEditorPanel">
-    <header><div><h2 id="fileEditorTitle">Edit file</h2><p id="fileEditorPath"></p></div>
-      <button id="closeFileEditorButton" type="button" aria-label="Close file editor">×</button></header>
-    <textarea id="fileEditorContent" spellcheck="false" aria-label="File content"></textarea>
-    <footer><span id="fileEditorStatus" role="status"></span><div>
-      <button id="cancelFileEditorButton" type="button">Cancel</button>
-      <button id="saveFileEditorButton" class="primaryButton" type="submit">Save</button>
-    </div></footer>
-  </form>
-</dialog>
-`;
+    this.appendChildren(this, [
+      this.createElement("dialog", { "id": "fileEditorDialog", "class": "fileEditorDialog", children: [this.createElement("form", { "id": "fileEditorForm", "class": "fileEditorPanel", children: [this.createElement("header", { children: [this.createElement("div", { children: [this.createElement("h2", { "id": "fileEditorTitle", children: [document.createTextNode("Edit file")] }), this.createElement("p", { "id": "fileEditorPath" })] }), this.createElement("button", { "id": "closeFileEditorButton", "type": "button", "aria-label": "Close file editor", children: [document.createTextNode("×")] })] }), this.createElement("textarea", { "id": "fileEditorContent", "spellcheck": "false", "aria-label": "File content" }), this.createElement("footer", { children: [this.createElement("span", { "id": "fileEditorStatus", "role": "status" }), this.createElement("div", { children: [this.createElement("button", { "id": "cancelFileEditorButton", "type": "button", children: [document.createTextNode("Cancel")] }), this.createElement("button", { "id": "saveFileEditorButton", "class": "primaryButton", "type": "submit", children: [document.createTextNode("Save")] })] })] })] })] })
+    ]);
     const dialog = this.querySelector("dialog");
     this.querySelector("#closeFileEditorButton").addEventListener("click", () => dialog.close());
     this.querySelector("#cancelFileEditorButton").addEventListener("click", () => dialog.close());

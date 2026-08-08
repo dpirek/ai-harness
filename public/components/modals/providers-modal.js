@@ -8,54 +8,9 @@ class ProvidersModal extends BaseComponent {
   }
 
   render() {
-    this.innerHTML = `
-<dialog id="settingsDialog" class="settingsDialog">
-  <form id="settingsForm" class="settingsPanel" method="dialog">
-    <header class="settingsHeader">
-      <div>
-        <h2>Providers</h2>
-        <p>Manage AI providers, credentials, and models</p>
-      </div>
-      <button id="closeSettingsButton" class="iconButton" type="button" aria-label="Close providers">×</button>
-    </header>
-
-    <section id="providerSettings" class="providerSettings" aria-label="AI provider settings">
-      <div class="providerTableToolbar">
-        <strong>Providers</strong>
-        <button id="addProviderButton" type="button">Add provider</button>
-      </div>
-      <div class="providerTableWrap">
-        <table class="providerTable">
-          <thead><tr><th>Use</th><th>Name</th><th>Type</th><th>Model</th><th>API key</th><th></th></tr></thead>
-          <tbody id="providersTableBody"></tbody>
-        </table>
-      </div>
-      <div id="providerEditor" class="providerEditor" hidden>
-        <label><span>Name</span><input id="providerNameInput" type="text" placeholder="My OpenAI"></label>
-        <label><span>Type</span><select id="providerSelect">
-          <option value="openai">OpenAI</option><option value="ollama">Ollama</option><option value="custom">Custom</option>
-        </select></label>
-        <label><span>Model</span><select id="providerModelInput"></select></label>
-        <label><span>Base URL</span><input id="providerBaseUrlInput" type="url" placeholder="http://localhost:11434"></label>
-        <label id="providerApiKeyField"><span>API key</span>
-          <input id="providerApiKeyInput" type="password" autocomplete="off" placeholder="Optional bearer token">
-        </label>
-        <div class="providerModelActions">
-          <button id="refreshModelsButton" type="button">Refresh models</button>
-          <span id="providerModelsStatus">Models not loaded</span>
-        </div>
-      </div>
-    </section>
-
-    <footer class="settingsFooter">
-      <span id="settingsStatus" class="configStatus">Provider settings are stored in SQLite.</span>
-      <div>
-        <button id="saveSettingsButton" class="primaryButton" type="submit">Save</button>
-      </div>
-    </footer>
-  </form>
-</dialog>
-`;
+    this.appendChildren(this, [
+      this.createElement("dialog", { "id": "settingsDialog", "class": "settingsDialog", children: [this.createElement("form", { "id": "settingsForm", "class": "settingsPanel", "method": "dialog", children: [this.createElement("header", { "class": "settingsHeader", children: [this.createElement("div", { children: [this.createElement("h2", { children: [document.createTextNode("Providers")] }), this.createElement("p", { children: [document.createTextNode("Manage AI providers, credentials, and models")] })] }), this.createElement("button", { "id": "closeSettingsButton", "class": "iconButton", "type": "button", "aria-label": "Close providers", children: [document.createTextNode("×")] })] }), this.createElement("section", { "id": "providerSettings", "class": "providerSettings", "aria-label": "AI provider settings", children: [this.createElement("div", { "class": "providerTableToolbar", children: [this.createElement("strong", { children: [document.createTextNode("Providers")] }), this.createElement("button", { "id": "addProviderButton", "type": "button", children: [document.createTextNode("Add provider")] })] }), this.createElement("div", { "class": "providerTableWrap", children: [this.createElement("table", { "class": "providerTable", children: [this.createElement("thead", { children: [this.createElement("tr", { children: [this.createElement("th", { children: [document.createTextNode("Use")] }), this.createElement("th", { children: [document.createTextNode("Name")] }), this.createElement("th", { children: [document.createTextNode("Type")] }), this.createElement("th", { children: [document.createTextNode("Model")] }), this.createElement("th", { children: [document.createTextNode("API key")] }), this.createElement("th", {  })] })] }), this.createElement("tbody", { "id": "providersTableBody" })] })] }), this.createElement("div", { "id": "providerEditor", "class": "providerEditor", "hidden": "", children: [this.createElement("label", { children: [this.createElement("span", { children: [document.createTextNode("Name")] }), this.createElement("input", { "id": "providerNameInput", "type": "text", "placeholder": "My OpenAI" })] }), this.createElement("label", { children: [this.createElement("span", { children: [document.createTextNode("Type")] }), this.createElement("select", { "id": "providerSelect", children: [this.createElement("option", { "value": "openai", children: [document.createTextNode("OpenAI")] }), this.createElement("option", { "value": "ollama", children: [document.createTextNode("Ollama")] }), this.createElement("option", { "value": "custom", children: [document.createTextNode("Custom")] })] })] }), this.createElement("label", { children: [this.createElement("span", { children: [document.createTextNode("Model")] }), this.createElement("select", { "id": "providerModelInput" })] }), this.createElement("label", { children: [this.createElement("span", { children: [document.createTextNode("Base URL")] }), this.createElement("input", { "id": "providerBaseUrlInput", "type": "url", "placeholder": "http://localhost:11434" })] }), this.createElement("label", { "id": "providerApiKeyField", children: [this.createElement("span", { children: [document.createTextNode("API key")] }), this.createElement("input", { "id": "providerApiKeyInput", "type": "password", "autocomplete": "off", "placeholder": "Optional bearer token" })] }), this.createElement("div", { "class": "providerModelActions", children: [this.createElement("button", { "id": "refreshModelsButton", "type": "button", children: [document.createTextNode("Refresh models")] }), this.createElement("span", { "id": "providerModelsStatus", children: [document.createTextNode("Models not loaded")] })] })] })] }), this.createElement("footer", { "class": "settingsFooter", children: [this.createElement("span", { "id": "settingsStatus", "class": "configStatus", children: [document.createTextNode("Provider settings are stored in SQLite.")] }), this.createElement("div", { children: [this.createElement("button", { "id": "saveSettingsButton", "class": "primaryButton", "type": "submit", children: [document.createTextNode("Save")] })] })] })] })] })
+    ]);
     const dialog = this.querySelector("dialog");
     this.querySelector("#closeSettingsButton").addEventListener("click", () => dialog.close());
     this.querySelector("form").addEventListener("submit", (event) => { event.preventDefault(); this.emit("save-provider-settings"); });

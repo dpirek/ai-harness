@@ -8,27 +8,28 @@ class HarnessChat extends BaseComponent {
 
   render() {
     this.setAttribute("role", "main");
-    this.innerHTML = `
-      <header class="chatTopbar">
-        <span id="socketState" class="state state-idle">Offline</span>
-        <div class="columnVisibilityControls" aria-label="Right column visibility">
-          <button id="toggleFilesColumnButton" type="button" aria-label="Hide workspace column" aria-pressed="true" title="Hide workspace column"><span aria-hidden="true">▱</span></button>
-          <button id="toggleStreamColumnButton" type="button" aria-label="Hide stream column" aria-pressed="true" title="Hide stream column"><span aria-hidden="true">◉</span></button>
-        </div>
-      </header>
-      <section id="messages" class="messages" aria-live="polite">
-        <div id="emptyState" class="emptyState">Ask the harness to inspect, edit, or explain this workspace.</div>
-      </section>
-      <footer class="composerWrap">
-        <form id="promptForm" class="composer">
-          <div id="imagePreviewList" class="imagePreviewList" aria-live="polite"></div>
-          <input id="imageInput" type="file" accept="image/*" multiple hidden>
-          <button id="addImageButton" class="composerIcon" type="button" aria-label="Add image" title="Add image">＋</button>
-          <textarea id="promptInput" name="prompt" rows="1" placeholder="Ask AI Harness" required></textarea>
-          <button id="sendButton" class="sendButton" type="submit" aria-label="Send">↑</button>
-        </form>
-      </footer>
-      <button id="resetButton" class="resetFab" type="button">Reset</button>`;
+    this.appendChildren(this, [
+      this.createElement("header", { "class": "chatTopbar", children: [this.createElement("span", { "id": "socketState", "class": "state state-idle", children: [document.createTextNode("Offline")] }), this.createElement("div", { "class": "columnVisibilityControls", "aria-label": "Right column visibility", children: [this.createElement("button", { "id": "toggleFilesColumnButton", "type": "button", "aria-label": "Hide workspace column", "aria-pressed": "true", "title": "Hide workspace column", children: [this.createElement("span", { "aria-hidden": "true", children: [document.createTextNode("▱")] })] }), this.createElement("button", { "id": "toggleStreamColumnButton", "type": "button", "aria-label": "Hide stream column", "aria-pressed": "true", "title": "Hide stream column", children: [this.createElement("span", { "aria-hidden": "true", children: [document.createTextNode("◉")] })] })] })] }),
+      this.createElement("section", { "id": "messages", "class": "messages", "aria-live": "polite", 
+        children: [
+          this.createElement("div", { "id": "emptyState", "class": "emptyState", 
+            children: [document.createTextNode("Ask the harness to inspect, edit, or explain this workspace.")] })] }),
+      this.createElement("footer", { "class": "composerWrap", children: [
+        this.createElement("form", { "id": "promptForm", "class": "composer", children: [
+          this.createElement("div", { "id": "imagePreviewList", "class": "imagePreviewList", "aria-live": "polite" }), 
+        this.createElement("input", { "id": "imageInput", "type": "file", "accept": "image/*", "multiple": "", "hidden": "" }), 
+        this.createElement("button", { "id": "addImageButton", "class": "composerIcon", "type": "button", "aria-label": "Add image", "title": "Add image", children: [document.createTextNode("＋")] }), 
+      this.createElement("textarea", { 
+        "id": "promptInput", 
+        "name": "prompt", 
+        "rows": "1", 
+        "placeholder": 
+        "Ask AI Harness", 
+        "required": "" 
+      }), 
+      this.createElement("button", { "id": "sendButton", "class": "sendButton", "type": "submit", "aria-label": "Send", children: [document.createTextNode("↑")] })] })] }),
+      this.createElement("button", { "id": "resetButton", "class": "resetFab", "type": "button", children: [document.createTextNode("Reset")] })
+    ]);
     const form = this.querySelector("#promptForm");
     const input = this.querySelector("#promptInput");
     const imageInput = this.querySelector("#imageInput");

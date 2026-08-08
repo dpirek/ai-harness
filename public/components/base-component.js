@@ -10,14 +10,14 @@ class BaseComponent extends HTMLElement {
       for (let key in props) {
         if(key === 'children') continue;
         if(key === 'addEventListener') continue;
-        if(key === 'innerHTML') continue;
         if(key === 'innerText') continue;
+        if(key === 'textContent') continue;
         if(key === 'style') continue;
         element.setAttribute(key, props[key]);
       }
   
-      if(props.innerHTML) element.innerHTML = props.innerHTML;
       if(props.innerText) element.innerText = props.innerText;
+      if(props.textContent !== undefined) element.textContent = props.textContent;
   
       if(props.addEventListener) {
         element.addEventListener(props.addEventListener.name, props.addEventListener.handler);
@@ -80,7 +80,7 @@ class BaseComponent extends HTMLElement {
   }
 
   clear() {
-    this.innerHTML = '';
+    this.replaceChildren();
   }
 
   refresh() {

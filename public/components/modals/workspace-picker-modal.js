@@ -8,18 +8,9 @@ class WorkspacePickerModal extends BaseComponent {
   }
 
   render() {
-    this.innerHTML = `
-<dialog id="workspacePickerDialog" class="workspacePickerDialog">
-  <form method="dialog" class="workspacePickerPanel">
-    <header><div><h2>Select workspace folder</h2><p id="workspacePickerPath">Choose a folder</p></div>
-      <div><button id="parentWorkspacePickerButton" type="button" title="Go to parent folder" aria-label="Go to parent folder">↑</button>
-      <button id="closeWorkspacePickerButton" type="button" aria-label="Close folder picker">×</button></div></header>
-    <div id="workspacePickerTree" class="workspacePickerTree"></div>
-    <footer><button type="button" id="cancelWorkspacePickerButton">Cancel</button>
-      <button type="button" id="confirmWorkspacePickerButton" class="primaryButton">Select folder</button></footer>
-  </form>
-</dialog>
-`;
+    this.appendChildren(this, [
+      this.createElement("dialog", { "id": "workspacePickerDialog", "class": "workspacePickerDialog", children: [this.createElement("form", { "method": "dialog", "class": "workspacePickerPanel", children: [this.createElement("header", { children: [this.createElement("div", { children: [this.createElement("h2", { children: [document.createTextNode("Select workspace folder")] }), this.createElement("p", { "id": "workspacePickerPath", children: [document.createTextNode("Choose a folder")] })] }), this.createElement("div", { children: [this.createElement("button", { "id": "parentWorkspacePickerButton", "type": "button", "title": "Go to parent folder", "aria-label": "Go to parent folder", children: [document.createTextNode("↑")] }), this.createElement("button", { "id": "closeWorkspacePickerButton", "type": "button", "aria-label": "Close folder picker", children: [document.createTextNode("×")] })] })] }), this.createElement("div", { "id": "workspacePickerTree", "class": "workspacePickerTree" }), this.createElement("footer", { children: [this.createElement("button", { "type": "button", "id": "cancelWorkspacePickerButton", children: [document.createTextNode("Cancel")] }), this.createElement("button", { "type": "button", "id": "confirmWorkspacePickerButton", "class": "primaryButton", children: [document.createTextNode("Select folder")] })] })] })] })
+    ]);
     const dialog = this.querySelector("dialog");
     this.querySelector("#closeWorkspacePickerButton").addEventListener("click", () => dialog.close());
     this.querySelector("#cancelWorkspacePickerButton").addEventListener("click", () => dialog.close());

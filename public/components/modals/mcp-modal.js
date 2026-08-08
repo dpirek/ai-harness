@@ -8,86 +8,9 @@ class McpModal extends BaseComponent {
   }
 
   render() {
-    this.innerHTML = `
-<dialog id="mcpDialog" class="settingsDialog">
-  <form id="mcpForm" class="settingsPanel" method="dialog">
-    <header class="settingsHeader">
-      <div>
-        <h2>MCP Configuration</h2>
-        <p>Add MCP servers stored in SQLite</p>
-      </div>
-      <button id="closeMcpButton" class="iconButton" type="button" aria-label="Close MCP configuration">×</button>
-    </header>
-
-    <div id="mcpTableToolbar" class="providerTableToolbar">
-      <strong>Configured servers</strong>
-      <div>
-        <button id="reloadToolsButton" type="button">Reload</button>
-        <button id="showAddToolButton" type="button">Add server</button>
-      </div>
-    </div>
-
-    <section id="mcpEditor" class="toolsAddPanel" aria-label="Add MCP server" hidden>
-      <label>
-        <span>Type</span>
-        <select id="toolTypeSelect">
-          <option value="remote">Remote MCP</option>
-          <option value="stdio">Local stdio MCP</option>
-        </select>
-      </label>
-      <label>
-        <span>Label</span>
-        <input id="toolLabelInput" type="text" placeholder="docs">
-      </label>
-      <label class="remoteToolField">
-        <span>Server URL</span>
-        <input id="toolUrlInput" type="url" placeholder="https://example.com/mcp">
-      </label>
-      <label class="stdioToolField">
-        <span>Command</span>
-        <input id="toolCommandInput" type="text" placeholder="node">
-      </label>
-      <label class="stdioToolField">
-        <span>Args</span>
-        <input id="toolArgsInput" type="text" placeholder="/absolute/path/to/server.js">
-      </label>
-      <label class="stdioToolField">
-        <span>CWD</span>
-        <input id="toolCwdInput" type="text" placeholder="/absolute/path/to/server">
-      </label>
-      <button id="addToolButton" class="primaryButton" type="submit">Save server</button>
-    </section>
-
-    <section class="toolsListPanel" aria-label="Configured MCP servers">
-      <div class="mcpListHeader"><span>Name</span><span>Type</span><span>Target</span><span>Status</span></div>
-      <div id="toolsList" class="toolsList"></div>
-    </section>
-
-    <div class="settingsTemplates" aria-label="Config templates" hidden>
-      <button id="remoteTemplateButton" type="button">Remote MCP</button>
-      <button id="stdioTemplateButton" type="button">Local stdio MCP</button>
-      <button id="autoApproveTemplateButton" type="button">Auto approve MCP</button>
-    </div>
-
-    <textarea
-      id="configInput"
-      class="configInput"
-      spellcheck="false"
-      placeholder="# MCP configuration stored in SQLite"
-      hidden
-    ></textarea>
-
-    <footer class="settingsFooter">
-      <span id="toolsStatus" class="configStatus">Not loaded</span>
-      <span id="configStatus" class="configStatus" hidden>Config not loaded</span>
-      <div hidden>
-        <button id="reloadConfigButton" type="button">Reload config</button>
-        <button id="saveConfigButton" class="primaryButton" type="button">Save MCP config</button>
-      </div>
-    </footer>
-  </form>
-</dialog>
-`;
+    this.appendChildren(this, [
+      this.createElement("dialog", { "id": "mcpDialog", "class": "settingsDialog", children: [this.createElement("form", { "id": "mcpForm", "class": "settingsPanel", "method": "dialog", children: [this.createElement("header", { "class": "settingsHeader", children: [this.createElement("div", { children: [this.createElement("h2", { children: [document.createTextNode("MCP Configuration")] }), this.createElement("p", { children: [document.createTextNode("Add MCP servers stored in SQLite")] })] }), this.createElement("button", { "id": "closeMcpButton", "class": "iconButton", "type": "button", "aria-label": "Close MCP configuration", children: [document.createTextNode("×")] })] }), this.createElement("div", { "id": "mcpTableToolbar", "class": "providerTableToolbar", children: [this.createElement("strong", { children: [document.createTextNode("Configured servers")] }), this.createElement("div", { children: [this.createElement("button", { "id": "reloadToolsButton", "type": "button", children: [document.createTextNode("Reload")] }), this.createElement("button", { "id": "showAddToolButton", "type": "button", children: [document.createTextNode("Add server")] })] })] }), this.createElement("section", { "id": "mcpEditor", "class": "toolsAddPanel", "aria-label": "Add MCP server", "hidden": "", children: [this.createElement("label", { children: [this.createElement("span", { children: [document.createTextNode("Type")] }), this.createElement("select", { "id": "toolTypeSelect", children: [this.createElement("option", { "value": "remote", children: [document.createTextNode("Remote MCP")] }), this.createElement("option", { "value": "stdio", children: [document.createTextNode("Local stdio MCP")] })] })] }), this.createElement("label", { children: [this.createElement("span", { children: [document.createTextNode("Label")] }), this.createElement("input", { "id": "toolLabelInput", "type": "text", "placeholder": "docs" })] }), this.createElement("label", { "class": "remoteToolField", children: [this.createElement("span", { children: [document.createTextNode("Server URL")] }), this.createElement("input", { "id": "toolUrlInput", "type": "url", "placeholder": "https://example.com/mcp" })] }), this.createElement("label", { "class": "stdioToolField", children: [this.createElement("span", { children: [document.createTextNode("Command")] }), this.createElement("input", { "id": "toolCommandInput", "type": "text", "placeholder": "node" })] }), this.createElement("label", { "class": "stdioToolField", children: [this.createElement("span", { children: [document.createTextNode("Args")] }), this.createElement("input", { "id": "toolArgsInput", "type": "text", "placeholder": "/absolute/path/to/server.js" })] }), this.createElement("label", { "class": "stdioToolField", children: [this.createElement("span", { children: [document.createTextNode("CWD")] }), this.createElement("input", { "id": "toolCwdInput", "type": "text", "placeholder": "/absolute/path/to/server" })] }), this.createElement("button", { "id": "addToolButton", "class": "primaryButton", "type": "submit", children: [document.createTextNode("Save server")] })] }), this.createElement("section", { "class": "toolsListPanel", "aria-label": "Configured MCP servers", children: [this.createElement("div", { "class": "mcpListHeader", children: [this.createElement("span", { children: [document.createTextNode("Name")] }), this.createElement("span", { children: [document.createTextNode("Type")] }), this.createElement("span", { children: [document.createTextNode("Target")] }), this.createElement("span", { children: [document.createTextNode("Status")] })] }), this.createElement("div", { "id": "toolsList", "class": "toolsList" })] }), this.createElement("div", { "class": "settingsTemplates", "aria-label": "Config templates", "hidden": "", children: [this.createElement("button", { "id": "remoteTemplateButton", "type": "button", children: [document.createTextNode("Remote MCP")] }), this.createElement("button", { "id": "stdioTemplateButton", "type": "button", children: [document.createTextNode("Local stdio MCP")] }), this.createElement("button", { "id": "autoApproveTemplateButton", "type": "button", children: [document.createTextNode("Auto approve MCP")] })] }), this.createElement("textarea", { "id": "configInput", "class": "configInput", "spellcheck": "false", "placeholder": "# MCP configuration stored in SQLite", "hidden": "" }), this.createElement("footer", { "class": "settingsFooter", children: [this.createElement("span", { "id": "toolsStatus", "class": "configStatus", children: [document.createTextNode("Not loaded")] }), this.createElement("span", { "id": "configStatus", "class": "configStatus", "hidden": "", children: [document.createTextNode("Config not loaded")] }), this.createElement("div", { "hidden": "", children: [this.createElement("button", { "id": "reloadConfigButton", "type": "button", children: [document.createTextNode("Reload config")] }), this.createElement("button", { "id": "saveConfigButton", "class": "primaryButton", "type": "button", children: [document.createTextNode("Save MCP config")] })] })] })] })] })
+    ]);
     const dialog = this.querySelector("dialog");
     this.querySelector("#closeMcpButton").addEventListener("click", () => dialog.close());
     this.querySelector("#reloadConfigButton").addEventListener("click", () => this.emit("reload-mcp-config"));

@@ -9,26 +9,12 @@ class HarnessSidebar extends BaseComponent {
   render() {
     this.setAttribute("role", "complementary");
     this.setAttribute("aria-label", "Conversation navigation");
-    this.innerHTML = `
-      <header class="sidebarTop">
-        <div class="brand"><img src="/logo.png" alt="" aria-hidden="true"><span>Harness</span></div>
-        <button id="sidebarToggleButton" class="sidebarToggle" type="button"
-          aria-label="Collapse sidebar" aria-pressed="false" title="Collapse sidebar">☰</button>
-      </header>
-      <nav class="navList" aria-label="Main">
-        <button id="newChatButton" type="button" title="New chat"><span class="navIcon">✎</span><span class="navLabel">New chat</span></button>
-        <button id="settingsButton" type="button" title="Providers"><span class="navIcon">◇</span><span class="navLabel">Providers</span></button>
-        <button id="systemPromptsButton" type="button" title="System prompts"><span class="navIcon">¶</span><span class="navLabel">System prompts</span></button>
-        <button id="toolsButton" type="button" title="Tools"><span class="navIcon">⚒</span><span class="navLabel">Tools</span></button>
-        <button id="mcpButton" type="button" title="MCP configuration"><span class="navIcon">⛓</span><span class="navLabel">MCP configuration</span></button>
-      </nav>
-      <section class="sidebarSection recents" aria-label="Recent conversations">
-        <h2>Recents</h2><div id="recentsList" class="recentsList"></div>
-      </section>
-      <footer class="account">
-        <span class="avatar"><img src="/logo.png" alt="" aria-hidden="true"></span>
-        <div class="accountMeta"><strong>User Name</strong><span id="workspaceMeta">Connecting...</span></div>
-      </footer>`;
+    this.appendChildren(this, [
+      this.createElement("header", { "class": "sidebarTop", children: [this.createElement("div", { "class": "brand", children: [this.createElement("img", { "src": "/logo.png", "alt": "", "aria-hidden": "true" }), this.createElement("span", { children: [document.createTextNode("Harness")] })] }), this.createElement("button", { "id": "sidebarToggleButton", "class": "sidebarToggle", "type": "button", "aria-label": "Collapse sidebar", "aria-pressed": "false", "title": "Collapse sidebar", children: [document.createTextNode("☰")] })] }),
+      this.createElement("nav", { "class": "navList", "aria-label": "Main", children: [this.createElement("button", { "id": "newChatButton", "type": "button", "title": "New chat", children: [this.createElement("span", { "class": "navIcon", children: [document.createTextNode("✎")] }), this.createElement("span", { "class": "navLabel", children: [document.createTextNode("New chat")] })] }), this.createElement("button", { "id": "settingsButton", "type": "button", "title": "Providers", children: [this.createElement("span", { "class": "navIcon", children: [document.createTextNode("◇")] }), this.createElement("span", { "class": "navLabel", children: [document.createTextNode("Providers")] })] }), this.createElement("button", { "id": "systemPromptsButton", "type": "button", "title": "System prompts", children: [this.createElement("span", { "class": "navIcon", children: [document.createTextNode("¶")] }), this.createElement("span", { "class": "navLabel", children: [document.createTextNode("System prompts")] })] }), this.createElement("button", { "id": "toolsButton", "type": "button", "title": "Tools", children: [this.createElement("span", { "class": "navIcon", children: [document.createTextNode("⚒")] }), this.createElement("span", { "class": "navLabel", children: [document.createTextNode("Tools")] })] }), this.createElement("button", { "id": "mcpButton", "type": "button", "title": "MCP configuration", children: [this.createElement("span", { "class": "navIcon", children: [document.createTextNode("⛓")] }), this.createElement("span", { "class": "navLabel", children: [document.createTextNode("MCP configuration")] })] })] }),
+      this.createElement("section", { "class": "sidebarSection recents", "aria-label": "Recent conversations", children: [this.createElement("h2", { children: [document.createTextNode("Recents")] }), this.createElement("div", { "id": "recentsList", "class": "recentsList" })] }),
+      this.createElement("footer", { "class": "account", children: [this.createElement("span", { "class": "avatar", children: [this.createElement("img", { "src": "/logo.png", "alt": "", "aria-hidden": "true" })] }), this.createElement("div", { "class": "accountMeta", children: [this.createElement("strong", { children: [document.createTextNode("User Name")] }), this.createElement("span", { "id": "workspaceMeta", children: [document.createTextNode("Connecting...")] })] })] })
+    ]);
     this.querySelector("#newChatButton").addEventListener("click", () => this.emit("new-chat"));
     this.querySelector("#sidebarToggleButton").addEventListener("click", () => this.emit("toggle-sidebar"));
     const dialogs = { settingsButton: "providers", systemPromptsButton: "system-prompts", toolsButton: "tools", mcpButton: "mcp" };

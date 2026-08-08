@@ -7,15 +7,33 @@ class StreamPanel extends BaseComponent {
   }
 
   render() {
-    this.setAttribute("role", "complementary");
-    this.setAttribute("aria-label", "Live interaction stream");
-    this.innerHTML = `
-      <div class="streamHeader">
-        <div><h2>Stream</h2><span>Live interactions</span></div>
-        <button id="clearEventsButton" type="button">Clear</button>
-      </div>
-      <ol id="eventList" class="eventList"></ol>`;
-    this.querySelector("#clearEventsButton").addEventListener("click", () => this.emit("clear-stream"));
+    const streamHeader = this.createElement('div', {
+      children: [
+        this.createElement('div', {
+          class: 'streamHeader',
+          children: [
+            this.createElement('div', {
+              children: [
+                this.createElement('h2', { textContent: 'Stream' }),
+                this.createElement('span', { textContent: 'Live interactions' })
+              ]
+            }),
+            this.createElement('button', {
+              id: 'clearEventsButton',
+              type: 'button',
+              textContent: 'Clear',
+              addEventListener: {
+                name: 'click',
+                handler: () => this.emit('clear-stream')
+              }
+            })
+          ]
+        }),
+        this.createElement('ol', { id: 'eventList', class: 'eventList' })
+      ]
+    });
+
+    this.appendChild(streamHeader);
   }
 }
 
