@@ -13,6 +13,21 @@ import { appendEvent, describeAgentEvent, renderEventList } from "./lib/event-re
 import { readFileAsDataUrl, renderImagePreviews as renderImagePreviewList } from "./lib/image-attachments.js";
 import { createSession, promptHistoryFromSessions, titleFromPrompt } from "./lib/sessions.js";
 import { renderWorkspaceNodes, renderWorkspacePicker } from "./lib/workspace-rendering.js";
+import { loadUiState, saveUiState } from "./services/ui-state-api.js";
+import {
+  loadWorkspaceFile,
+  loadWorkspaceTree as fetchWorkspaceTree,
+  saveWorkspaceFile,
+} from "./services/workspace-api.js";
+import {
+  loadConfig as fetchConfig,
+  loadHealth as fetchHealth,
+  loadProviderModels as fetchProviderModels,
+  loadSystemPrompts as fetchSystemPrompts,
+  saveConfig as persistConfig,
+  saveSystemPrompt as persistSystemPrompt,
+} from "./services/settings-api.js";
+import SocketService from "./services/socket-service.js";
 
 const socketState = document.querySelector("#socketState");
 const workspaceMeta = document.querySelector("#workspaceMeta");
@@ -116,7 +131,7 @@ const closeFileEditorButton = document.querySelector("#closeFileEditorButton");
 const cancelFileEditorButton = document.querySelector("#cancelFileEditorButton");
 const saveFileEditorButton = document.querySelector("#saveFileEditorButton");
 
-let socket;
+let socketService;
 let runActive = false;
 let activeSessionId = null;
 let pendingSessionId = null;
@@ -162,18 +177,12 @@ function renderSystemPrompts() {
 }
 
 async function loadSystemPrompts() {
-  const response = await fetch("/api/system-prompts");
-  const payload = await response.json();
-  if (!payload.ok) throw new Error(payload.error || "Unable to load system prompts.");
-  systemPrompts = payload.prompts || [];
+  systemPrompts = await fetchSystemPrompts();
   renderSystemPrompts();
 }
 
 async function saveSystemPrompt() {
-  const response = await fetch("/api/system-prompts", { method: "PUT", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ key: editingSystemPromptKey, content: systemPromptContent.value }) });
-  const payload = await response.json();
-  if (!payload.ok) throw new Error(payload.error || "Unable to save system prompt.");
+  await persistSystemPrompt(editingSystemPromptKey, systemPromptContent.value);
   systemPromptsStatus.textContent = "System prompt saved"; systemPromptsStatus.dataset.state = "success";
   systemPromptEditor.hidden = true; systemPromptsList.hidden = false; saveSystemPromptButton.hidden = true;
   await loadSystemPrompts();
@@ -188,17 +197,6 @@ let sidebarWidth = 344;
 let streamWidth = 360;
 let filesWidth = 300;
 let uiStateSaveQueue = Promise.resolve();
-
-async function saveUiState(state) {
-  const response = await fetch("/api/ui-state", {
-    method: "PUT",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ state }),
-    keepalive: true,
-  });
-  const payload = await response.json();
-  if (!payload.ok) throw new Error(payload.error || "Unable to save UI state.");
-}
 
 function persistUiState(state) {
   uiStateSaveQueue = uiStateSaveQueue
@@ -348,11 +346,9 @@ async function openFileEditor(node) {
   fileEditorStatus.textContent = "Loading…";
   fileEditorDialog.showModal();
   try {
-    const response = await fetch(`/api/workspace-file?workspace=${encodeURIComponent(workspace)}&path=${encodeURIComponent(node.path)}`);
-    const payload = await response.json();
-    if (!payload.ok) throw new Error(payload.error || "Unable to open file.");
+    const content = await loadWorkspaceFile(workspace, node.path);
     if (editingFilePath !== node.path || !fileEditorDialog.open) return;
-    fileEditorContent.value = payload.content;
+    fileEditorContent.value = content;
     fileEditorContent.disabled = false;
     saveFileEditorButton.disabled = false;
     fileEditorStatus.textContent = "";
@@ -367,17 +363,11 @@ async function saveEditedFile() {
   saveFileEditorButton.disabled = true;
   fileEditorStatus.textContent = "Saving…";
   try {
-    const response = await fetch("/api/workspace-file", {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        workspace: activeSession()?.workspace || defaultWorkspace,
-        path: editingFilePath,
-        content: fileEditorContent.value,
-      }),
-    });
-    const payload = await response.json();
-    if (!payload.ok) throw new Error(payload.error || "Unable to save file.");
+    await saveWorkspaceFile(
+      activeSession()?.workspace || defaultWorkspace,
+      editingFilePath,
+      fileEditorContent.value,
+    );
     fileEditorStatus.textContent = "Saved";
     addEvent("File saved", editingFilePath);
   } catch (error) {
@@ -393,9 +383,7 @@ async function loadWorkspaceTree() {
   workspaceTreeElement.innerHTML = '<p class="workspaceTreeStatus">Loading files…</p>';
   selectWorkspaceRootButton.disabled = true;
   try {
-    const response = await fetch(`/api/workspace-tree?workspace=${encodeURIComponent(selectedWorkspace)}`);
-    const payload = await response.json();
-    if (!payload.ok) throw new Error(payload.error || "Unable to load files.");
+    const payload = await fetchWorkspaceTree(selectedWorkspace);
     workspaceBrowserRoot = payload.root;
     workspaceBrowserNodes = payload.tree || [];
     selectWorkspaceRootButton.disabled = false;
@@ -425,9 +413,7 @@ function chooseWorkspacePickerPath(path) {
 async function loadWorkspacePickerRoot(rootPath) {
   parentWorkspacePickerButton.disabled = true;
   workspacePickerTree.innerHTML = '<p class="workspaceTreeStatus">Loading folders…</p>';
-  const response = await fetch(`/api/workspace-tree?workspace=${encodeURIComponent(rootPath)}`);
-  const payload = await response.json();
-  if (!payload.ok) throw new Error(payload.error || "Unable to browse folder.");
+  const payload = await fetchWorkspaceTree(rootPath);
   workspacePickerRoot = payload.root;
   workspacePickerParent = payload.parent;
   parentWorkspacePickerButton.disabled = workspacePickerParent === workspacePickerRoot;
@@ -564,7 +550,7 @@ function setState(label, className) {
 
 function setBusy(value) {
   runActive = value;
-  sendButton.disabled = value || socket?.readyState !== WebSocket.OPEN;
+  sendButton.disabled = value || !socketService?.isOpen;
   promptInput.disabled = value;
   workspaceInput.disabled = value;
 }
@@ -733,9 +719,7 @@ function addEvent(title, detail, { persist = true } = {}) {
 }
 
 function send(payload) {
-  if (socket?.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify(payload));
-  }
+  socketService?.send(payload);
 }
 
 function currentProviderSettings() {
@@ -946,17 +930,7 @@ async function loadProviderModels() {
   setProviderModelsStatus("Loading models...");
   refreshModelsButton.disabled = true;
   try {
-    const response = await fetch("/api/models", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        provider: current.provider,
-        baseUrl: current.baseUrl,
-        apiKey: current.apiKey,
-      }),
-    });
-    const payload = await response.json();
-    if (!payload.ok) throw new Error(payload.error || "Unable to load models.");
+    const payload = await fetchProviderModels(current);
     setModelOptions(payload.models || [], current.model);
     setProviderModelsStatus(`${payload.models.length} model${payload.models.length === 1 ? "" : "s"} loaded`, "success");
   } catch (error) {
@@ -982,9 +956,7 @@ async function loadConfig() {
   setConfigStatus("Loading...");
   reloadConfigButton.disabled = true;
   try {
-    const response = await fetch("/api/config");
-    const payload = await response.json();
-    if (!payload.ok) throw new Error(payload.error || "Unable to load config.");
+    const payload = await fetchConfig();
     configInput.value = payload.content;
     setConfigStatus(payload.exists ? "Loaded MCP configuration from SQLite" : "No MCP configuration yet");
   } catch (error) {
@@ -998,13 +970,7 @@ async function saveConfig() {
   setConfigStatus("Saving...");
   saveConfigButton.disabled = true;
   try {
-    const response = await fetch("/api/config", {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ content: configInput.value }),
-    });
-    const payload = await response.json();
-    if (!payload.ok) throw new Error(payload.error || "Unable to save config.");
+    const payload = await persistConfig(configInput.value);
     setConfigStatus(`Saved ${payload.path}`, "success");
     addEvent("Config saved", `${payload.path} (${payload.bytes} bytes)`);
   } catch (error) {
@@ -1015,13 +981,7 @@ async function saveConfig() {
 }
 
 async function saveConfigContent(content) {
-  const response = await fetch("/api/config", {
-    method: "PUT",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ content }),
-  });
-  const payload = await response.json();
-  if (!payload.ok) throw new Error(payload.error || "Unable to save config.");
+  const payload = await persistConfig(content);
   send({ type: "reload_tools" });
   configInput.value = content;
   return payload;
@@ -1119,9 +1079,7 @@ async function loadTools() {
   setToolsStatus("Loading...");
   reloadToolsButton.disabled = true;
   try {
-    const response = await fetch("/api/config");
-    const payload = await response.json();
-    if (!payload.ok) throw new Error(payload.error || "Unable to load tools.");
+    const payload = await fetchConfig();
     toolsConfigContent = payload.content;
     renderTools();
     setToolsStatus(payload.exists ? "Loaded MCP servers" : "No config file yet");
@@ -1159,8 +1117,7 @@ async function addTool() {
 
 async function loadHealth() {
   try {
-    const response = await fetch("/api/health");
-    const health = await response.json();
+    const health = await fetchHealth();
     defaultWorkspace = health.workspace || ".";
     let changed = false;
     for (const session of sessions) {
@@ -1178,33 +1135,7 @@ async function loadHealth() {
   }
 }
 
-function connect() {
-  setState("Connecting", "state-pending");
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  socket = new WebSocket(`${protocol}//${window.location.host}/ws`);
-
-  socket.addEventListener("open", () => {
-    setState("Online", "state-online");
-    send({ type: "provider_settings", ...providerSettings });
-    send({ type: "tool_permissions", permissions: storedToolPermissions });
-    setBusy(false);
-    addEvent("Socket connected");
-  });
-
-  socket.addEventListener("close", () => {
-    setState("Offline", "state-idle");
-    setBusy(false);
-    addEvent("Socket closed");
-    window.setTimeout(connect, 1500);
-  });
-
-  socket.addEventListener("error", () => {
-    setState("Error", "state-error");
-    addEvent("Socket error");
-  });
-
-  socket.addEventListener("message", (event) => {
-    const payload = JSON.parse(event.data);
+function handleSocketMessage(payload) {
     if (payload.type === "ready") {
       addEvent("Server defaults", {
         provider: payload.provider,
@@ -1287,7 +1218,31 @@ function connect() {
       pendingSessionId = null;
       setBusy(false);
     }
+}
+
+function connect() {
+  setState("Connecting", "state-pending");
+  socketService = new SocketService({
+    onOpen() {
+      setState("Online", "state-online");
+      send({ type: "provider_settings", ...providerSettings });
+      send({ type: "tool_permissions", permissions: storedToolPermissions });
+      setBusy(false);
+      addEvent("Socket connected");
+    },
+    onClose() {
+      setState("Offline", "state-idle");
+      setBusy(false);
+      addEvent("Socket closed");
+      window.setTimeout(connect, 1500);
+    },
+    onError() {
+      setState("Error", "state-error");
+      addEvent("Socket error");
+    },
+    onMessage: handleSocketMessage,
   });
+  socketService.connect();
 }
 
 promptForm.addEventListener("submit", (event) => {
@@ -1555,10 +1510,7 @@ clearEventsButton.addEventListener("click", () => {
 async function initialize() {
   let state = {};
   try {
-    const response = await fetch("/api/ui-state");
-    const payload = await response.json();
-    if (!payload.ok) throw new Error(payload.error || "Unable to load UI state.");
-    state = payload.state || {};
+    state = await loadUiState();
     sessions = Array.isArray(state.sessions) && state.sessions.length > 0
       ? state.sessions.map((session) => ({
         ...session,

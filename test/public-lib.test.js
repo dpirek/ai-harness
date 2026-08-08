@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mcpBlocks, quoteToml, setToolBlockEnabled } from "../public/lib/mcp-config.js";
 import { defaultProviderSettings, normalizeToolPermissions } from "../public/lib/settings.js";
 import { promptHistoryFromSessions, titleFromPrompt } from "../public/lib/sessions.js";
+import { jsonOptions, requestJson } from "../public/services/api-client.js";
 
 test("browser settings helpers provide normalized defaults", () => {
   assert.equal(defaultProviderSettings().provider, "openai");
@@ -17,6 +18,24 @@ test("session helpers derive titles and unique prompt history", () => {
     { messages: [{ role: "user", text: "first" }, { role: "assistant", text: "reply" }] },
     { messages: [{ role: "user", text: "second" }, { role: "user", text: "first" }] },
   ]), ["second", "first"]);
+});
+
+test("browser API helpers serialize JSON and normalize API errors", async () => {
+  assert.deepEqual(jsonOptions("PUT", { enabled: true }), {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: '{"enabled":true}',
+  });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true,
+    async json() { return { ok: false, error: "Not allowed" }; },
+  });
+  try {
+    await assert.rejects(requestJson("/api/test"), /Not allowed/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("browser MCP config helpers parse and toggle server blocks", () => {
