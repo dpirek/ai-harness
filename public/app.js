@@ -4,6 +4,10 @@ import {
   normalizeToolPermissions,
 } from "./lib/settings.js";
 import { CONFIG_TEMPLATES, mcpBlocks, quoteToml, setToolBlockEnabled } from "./lib/mcp-config.js";
+import { appendEvent, describeAgentEvent, renderEventList } from "./lib/event-rendering.js";
+import { readFileAsDataUrl, renderImagePreviews as renderImagePreviewList } from "./lib/image-attachments.js";
+import { createSession, promptHistoryFromSessions, titleFromPrompt } from "./lib/sessions.js";
+import { renderWorkspaceNodes, renderWorkspacePicker } from "./lib/workspace-rendering.js";
 
 const socketState = document.querySelector("#socketState");
 const workspaceMeta = document.querySelector("#workspaceMeta");
@@ -170,17 +174,6 @@ async function saveSystemPrompt() {
   await loadSystemPrompts();
 }
 
-function createSession(title = "New chat") {
-  return {
-    id: crypto.randomUUID(),
-    title,
-    messages: [],
-    events: [],
-    workspace: defaultWorkspace,
-    updatedAt: Date.now(),
-  };
-}
-
 let sessions = [];
 let providerSettings = defaultProviderSettings();
 let providers = [];
@@ -339,45 +332,6 @@ function startFilesResize(event) {
   filesResizeHandle.addEventListener("pointercancel", stop);
 }
 
-function renderWorkspaceNodes(nodes, parent) {
-  for (const node of nodes) {
-    if (node.type === "directory") {
-      const details = document.createElement("details");
-      details.open = false;
-      const summary = document.createElement("summary");
-      summary.setAttribute("aria-expanded", "false");
-      details.addEventListener("toggle", () => {
-        summary.setAttribute("aria-expanded", String(details.open));
-      });
-      const chevron = document.createElement("span"); chevron.className = "treeChevron"; chevron.textContent = "›";
-      const icon = document.createElement("span"); icon.className = "treeIcon"; icon.textContent = "▱";
-      const name = document.createElement("span"); name.className = "workspaceFileName"; name.textContent = node.name;
-      const select = document.createElement("button"); select.type = "button"; select.className = "selectFolderButton";
-      select.textContent = "✓"; select.title = `Use ${node.name} as workspace`; select.setAttribute("aria-label", select.title);
-      select.addEventListener("click", (event) => {
-        event.preventDefault(); event.stopPropagation(); workspaceInput.value = node.path; saveActiveWorkspace();
-      });
-      summary.append(chevron, icon, name, select);
-      const children = document.createElement("div"); children.className = "workspaceChildren";
-      renderWorkspaceNodes(node.children || [], children); details.append(summary, children); parent.append(details);
-    } else {
-      const file = document.createElement("div"); file.className = "workspaceFile";
-      const spacer = document.createElement("span"); spacer.className = "treeChevron";
-      const extension = node.name.split(".").pop().toLowerCase();
-      const fileIcons = { js: "JS", mjs: "JS", cjs: "JS", json: "{}", html: "‹›", css: "#", md: "ⓘ", png: "▧", jpg: "▧", jpeg: "▧", svg: "◇" };
-      const icon = document.createElement("span"); icon.className = `treeIcon treeIcon-${extension}`; icon.textContent = fileIcons[extension] || "·";
-      const name = document.createElement("span"); name.className = "workspaceFileName"; name.textContent = node.name;
-      file.tabIndex = 0; file.setAttribute("role", "button"); file.setAttribute("aria-label", `Edit ${node.name}`);
-      file.addEventListener("click", () => openFileEditor(node));
-      file.addEventListener("keydown", (event) => {
-        if (event.key !== "Enter" && event.key !== " ") return;
-        event.preventDefault(); openFileEditor(node);
-      });
-      file.append(spacer, icon, name); parent.append(file);
-    }
-  }
-}
-
 async function openFileEditor(node) {
   const workspace = activeSession()?.workspace || defaultWorkspace;
   editingFilePath = node.path;
@@ -441,7 +395,11 @@ async function loadWorkspaceTree() {
     workspaceBrowserNodes = payload.tree || [];
     selectWorkspaceRootButton.disabled = false;
     selectWorkspaceRootButton.title = "Choose workspace folder";
-    workspaceTreeElement.replaceChildren(); renderWorkspaceNodes(workspaceBrowserNodes, workspaceTreeElement);
+    workspaceTreeElement.replaceChildren();
+    renderWorkspaceNodes(workspaceBrowserNodes, workspaceTreeElement, {
+      onOpenFile: openFileEditor,
+      onSelectFolder(path) { workspaceInput.value = path; saveActiveWorkspace(); },
+    });
   } catch (error) {
     workspaceBrowserRoot = null;
     workspaceBrowserNodes = [];
@@ -459,30 +417,6 @@ function chooseWorkspacePickerPath(path) {
   });
 }
 
-function renderWorkspacePickerNodes(nodes, parent) {
-  for (const node of nodes.filter((item) => item.type === "directory")) {
-    const details = document.createElement("details"); details.open = false;
-    const summary = document.createElement("summary"); summary.className = "workspacePickerOption";
-    summary.dataset.path = node.path; summary.setAttribute("aria-expanded", "false");
-    summary.innerHTML = `<span class="workspacePickerChevron" aria-hidden="true">›</span><span aria-hidden="true">▱</span><span></span>`;
-    summary.lastElementChild.textContent = node.name;
-    summary.addEventListener("click", () => chooseWorkspacePickerPath(node.path));
-    summary.addEventListener("dblclick", () => { chooseWorkspacePickerPath(node.path); confirmWorkspacePickerButton.click(); });
-    details.addEventListener("toggle", () => summary.setAttribute("aria-expanded", String(details.open)));
-    const children = document.createElement("div"); children.className = "workspacePickerChildren";
-    renderWorkspacePickerNodes(node.children || [], children);
-    details.append(summary, children); parent.append(details);
-  }
-}
-
-function renderWorkspacePicker(rootPath, nodes) {
-  workspacePickerTree.replaceChildren();
-  const root = document.createElement("button"); root.type = "button"; root.className = "workspacePickerOption";
-  root.dataset.path = rootPath; root.textContent = `▱  ${rootPath.split("/").pop() || rootPath}`;
-  root.addEventListener("click", () => chooseWorkspacePickerPath(rootPath));
-  workspacePickerTree.append(root); renderWorkspacePickerNodes(nodes, workspacePickerTree);
-}
-
 async function loadWorkspacePickerRoot(rootPath) {
   parentWorkspacePickerButton.disabled = true;
   workspacePickerTree.innerHTML = '<p class="workspaceTreeStatus">Loading folders…</p>';
@@ -492,7 +426,10 @@ async function loadWorkspacePickerRoot(rootPath) {
   workspacePickerRoot = payload.root;
   workspacePickerParent = payload.parent;
   parentWorkspacePickerButton.disabled = workspacePickerParent === workspacePickerRoot;
-  renderWorkspacePicker(workspacePickerRoot, payload.tree || []);
+  renderWorkspacePicker(workspacePickerTree, workspacePickerRoot, payload.tree || [], {
+    onChoose: chooseWorkspacePickerPath,
+    onConfirm: () => confirmWorkspacePickerButton.click(),
+  });
   chooseWorkspacePickerPath(workspacePickerRoot);
 }
 
@@ -532,23 +469,8 @@ function saveActiveWorkspace() {
   loadWorkspaceTree();
 }
 
-function titleFromPrompt(prompt) {
-  const compact = prompt.replace(/\s+/g, " ").trim();
-  if (!compact) return "New chat";
-  return compact.length > 34 ? `${compact.slice(0, 34)}...` : compact;
-}
-
 function promptHistory() {
-  const prompts = [];
-  const seen = new Set();
-  for (const session of sessions) {
-    for (const message of session.messages) {
-      if (message.role !== "user" || seen.has(message.text)) continue;
-      seen.add(message.text);
-      prompts.push(message.text);
-    }
-  }
-  return prompts.reverse();
+  return promptHistoryFromSessions(sessions);
 }
 
 function resetPromptHistoryCursor() {
@@ -600,33 +522,10 @@ function addMessageToSession(sessionId, role, text, images = []) {
 }
 
 function renderImagePreviews() {
-  imagePreviewList.replaceChildren();
-  attachedImages.forEach((image, index) => {
-    const item = document.createElement("div");
-    item.className = "imagePreview";
-    const img = document.createElement("img");
-    img.src = image.dataUrl;
-    img.alt = image.name;
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.ariaLabel = `Remove ${image.name}`;
-    remove.textContent = "×";
-    remove.addEventListener("click", () => {
-      attachedImages.splice(index, 1);
-      renderImagePreviews();
-      promptInput.focus();
-    });
-    item.append(img, remove);
-    imagePreviewList.append(item);
-  });
-}
-
-function readFileAsDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.addEventListener("load", () => resolve(reader.result));
-    reader.addEventListener("error", () => reject(reader.error));
-    reader.readAsDataURL(file);
+  renderImagePreviewList(imagePreviewList, attachedImages, (index) => {
+    attachedImages.splice(index, 1);
+    renderImagePreviews();
+    promptInput.focus();
   });
 }
 
@@ -779,7 +678,7 @@ function renderRecents() {
       if (!window.confirm(`Delete conversation “${session.title || "New chat"}”?`)) return;
       const deletingActive = session.id === activeSessionId;
       sessions = sessions.filter((candidate) => candidate.id !== session.id);
-      if (sessions.length === 0) sessions = [createSession("AI Harness Session")];
+      if (sessions.length === 0) sessions = [createSession("AI Harness Session", defaultWorkspace)];
       if (deletingActive) activeSessionId = sessions[0].id;
       persistUiState({ sessions, activeSessionId });
       send({ type: "reset", sessionId: session.id });
@@ -796,7 +695,7 @@ function renderRecents() {
 
 function startNewChat() {
   if (runActive) return;
-  const session = createSession();
+  const session = createSession("New chat", defaultWorkspace);
   sessions = [session, ...sessions];
   activeSessionId = session.id;
   persistUiState({ sessions, activeSessionId });
@@ -808,90 +707,12 @@ function startNewChat() {
   addEvent("New chat started");
 }
 
-function formatJson(value) {
-  return JSON.stringify(value, null, 2);
-}
-
-function describeAgentEvent(event) {
-  if (event.type === "start") return "Run started";
-  if (event.type === "turn") return `Model turn ${event.turn}`;
-  if (event.type === "response") return `Response ${event.id}`;
-  if (event.type === "tool_start") return `Tool started: ${event.name}`;
-  if (event.type === "tool_result") {
-    const ok = event.output?.ok === false ? "failed" : "completed";
-    return `Tool ${ok}: ${event.name}`;
-  }
-  if (event.type === "validation") {
-    if (event.status === "passed") return `Validation passed: ${event.tool}`;
-    if (event.status === "failed") return `Validation failed: ${event.tool}`;
-    if (event.status === "pending") return "Validation pending";
-    return "Validation required";
-  }
-  if (event.type === "mcp_call") return `MCP call: ${event.server}.${event.name}`;
-  if (event.type === "approval_request") {
-    return `Approval requested: ${event.server}.${event.name}`;
-  }
-  if (event.type === "approval_response") {
-    return `Approval ${event.approved ? "granted" : "denied"}: ${event.server}.${event.name}`;
-  }
-  if (event.type === "final") return "Final answer received";
-  return event.type;
-}
-
-function eventIcon(title) {
-  const value = title.toLowerCase();
-  if (value.includes("validation")) return "♢";
-  if (value.includes("error") || value.includes("failed") || value.includes("denied")) return "!";
-  if (value.includes("tool") || value.includes("command")) return "⌘";
-  if (value.includes("approval")) return "✓";
-  if (value.includes("response") || value.includes("answer")) return "↳";
-  if (value.includes("prompt") || value.includes("message")) return "→";
-  if (value.includes("model") || value.includes("provider")) return "◇";
-  if (value.includes("socket") || value.includes("connected")) return "●";
-  if (value.includes("config") || value.includes("workspace")) return "⚙";
-  return "·";
-}
-
 function renderEvent({ title, detail, timestamp }) {
-  const item = document.createElement("li");
-  const disclosure = document.createElement("details");
-  const summary = document.createElement("summary");
-  const icon = document.createElement("span");
-  icon.className = "eventIcon";
-  icon.textContent = eventIcon(title);
-  icon.setAttribute("aria-hidden", "true");
-
-  const heading = document.createElement("span");
-  heading.className = "eventTitle";
-  heading.textContent = title;
-
-  const stamp = document.createElement("time");
-  const eventDate = new Date(timestamp || Date.now());
-  stamp.dateTime = eventDate.toISOString();
-  stamp.textContent = eventDate.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-
-  const chevron = document.createElement("span");
-  chevron.className = "eventChevron";
-  chevron.textContent = "›";
-  chevron.setAttribute("aria-hidden", "true");
-  summary.append(icon, heading, stamp, chevron);
-
-  const pre = document.createElement("pre");
-  pre.textContent = formatJson({ type: title, ...(detail !== undefined ? { detail } : {}) });
-  disclosure.append(summary, pre);
-  item.append(disclosure);
-
-  eventList.append(item);
-  scrollToEnd(eventList);
+  appendEvent(eventList, { title, detail, timestamp });
 }
 
 function renderEvents() {
-  eventList.replaceChildren();
-  for (const event of activeSession()?.events || []) renderEvent(event);
+  renderEventList(eventList, activeSession()?.events || []);
 }
 
 function addEvent(title, detail, { persist = true } = {}) {
@@ -1740,7 +1561,7 @@ async function initialize() {
         events: Array.isArray(session.events) ? session.events : [],
         workspace: session.workspace || defaultWorkspace,
       }))
-      : [createSession("AI Harness Session")];
+      : [createSession("AI Harness Session", defaultWorkspace)];
     providerSettings = { ...defaultProviderSettings(), ...(state.providerSettings || {}) };
     providers = Array.isArray(state.providers) ? state.providers : [];
     editingProviderId = providers.find((item) => item.selected)?.id || null;
@@ -1759,7 +1580,7 @@ async function initialize() {
     applyRightColumnState("files", localStorage.getItem(FILES_VISIBLE_STORAGE_KEY) !== "false");
     applyRightColumnState("stream", localStorage.getItem(STREAM_VISIBLE_STORAGE_KEY) !== "false");
   } catch (error) {
-    sessions = [createSession("AI Harness Session")];
+    sessions = [createSession("AI Harness Session", defaultWorkspace)];
     applySidebarState(false);
     addEvent("UI state load failed", error.message, { persist: false });
   }
