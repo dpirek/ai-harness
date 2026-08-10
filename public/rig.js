@@ -8,7 +8,7 @@ import RigIO from "/components/rig-io.js";
 import WorkspacePanel from "/components/workspace-panel.js";
 import "/components/modals/file-editor-modal.js";
 import "/components/modals/workspace-picker-modal.js";
-import { describeAgentEvent } from "/lib/event-rendering.js";
+import { appendEvent, describeAgentEvent } from "/lib/event-rendering.js";
 import { harnessWaveIcon, liveLogIcon, workspaceExplorerIcon } from "/lib/icons.js";
 import { appendMessageText } from "/lib/message-rendering.js";
 import { mcpBlocks, quoteToml, setToolBlockEnabled } from "/lib/mcp-config.js";
@@ -168,15 +168,25 @@ fileExplorer.classList.add("rig-file-explorer");
 app.append(fileExplorer);
 const historyList = element("div", {
   className: "conversation-history-list",
-  children: [element("p", { className: "conversation-history-empty", text: "No messages yet." })],
+  children: [element("p", { className: "conversation-history-empty", text: "No conversations yet." })],
 });
-const historyCount = element("span", { text: "0 messages" });
+const historyCount = element("span", { text: "0 conversations" });
+const newConversationButton = element("button", {
+  className: "conversation-history-create",
+  attrs: {
+    type: "button",
+    title: "New conversation",
+    "aria-label": "New conversation",
+  },
+  children: [element("span", { text: "+", attrs: { "aria-hidden": "true" } })],
+});
 const conversationHistory = element("aside", {
   className: "rig-conversation-history",
   attrs: { "aria-label": "Conversation history" },
   children: [
     element("header", { children: [
       element("div", { children: [element("h2", { text: "Conversation" }), historyCount] }),
+      newConversationButton,
     ] }),
     historyList,
   ],
@@ -947,51 +957,44 @@ const promptPanel = element("section", {
   ],
 });
 
-const logOutput = element("div", {
+const logOutput = element("ol", {
   className: "log-output",
   attrs: { role: "log", "aria-live": "polite", "aria-label": "Harness activity log" },
-  children: [
-    element("p", { children: [
-      element("time", { text: "[SOCKET]" }),
-      element("span", { text: " Connecting to harness…" }),
-    ] }),
-    element("p", { children: [
-      element("time", { text: "[PROMPT]" }),
-      element("span", { text: " Waiting for connection" }),
-    ] }),
-  ],
 });
 
 const liveStatus = element("span", { className: "log-live log-connecting", text: "● CONNECTING" });
 
-const logPanel = element("aside", {
-  className: "rig-workspace-panel log-window",
+const liveLogPanel = element("aside", {
+  className: "rig-live-log",
   attrs: { "aria-labelledby": "logWindowTitle" },
   children: [
-    element("div", { className: "log-heading", children: [
-      element("h2", { text: "LIVE LOG", attrs: { id: "logWindowTitle" } }),
-      liveStatus,
+    element("header", { children: [
+      element("div", { children: [
+        element("h2", { text: "Live Log", attrs: { id: "logWindowTitle" } }),
+        liveStatus,
+      ] }),
     ] }),
     logOutput,
   ],
 });
+app.append(liveLogPanel);
 
 const workspaceResizeHandle = element("div", {
   className: "rig-workspace-resize-handle",
   attrs: {
     role: "separator",
     tabindex: "0",
-    "aria-label": "Resize conversation panel",
+    "aria-label": "Resize prompt workspace",
     "aria-orientation": "horizontal",
-    title: "Drag to resize Conversation and Live Log",
+    title: "Drag to resize the prompt workspace",
   },
   children: [element("span", { attrs: { "aria-hidden": "true" } })],
 });
 
 const workspace = element("section", {
   className: "rig-workspace",
-  attrs: { "aria-label": "Prompt and harness log" },
-  children: [workspaceResizeHandle, promptPanel, logPanel],
+  attrs: { "aria-label": "Prompt workspace" },
+  children: [workspaceResizeHandle, promptPanel],
 });
 
 rigContainer.insertAdjacentElement("afterend", workspace);
@@ -1073,6 +1076,7 @@ const persistRigSessions = () => {
   activeRigSession.messages = conversation;
   activeRigSession.workspace = promptWorkspace;
   activeRigSession.updatedAt = Date.now();
+  renderConversationList();
   sessionSaveQueue = sessionSaveQueue
     .then(() => saveUiState({ sessions, activeSessionId: sessionId }))
     .catch((error) => appendLog("HISTORY", `Save failed: ${error.message}`, "log-error"));
@@ -1120,18 +1124,23 @@ const addResponseUsage = (response = {}) => {
   updateTokenMeters();
 };
 
-const appendLog = (type, message, className = "") => {
-  const item = element("p", {
-    className,
-    children: [
-      element("time", { text: `[${type}]` }),
-      element("span", { text: ` ${message}` }),
-    ],
+const appendLog = (type, message, detailOrClassName = undefined, className = "") => {
+  const detail = typeof detailOrClassName === "string"
+    ? { channel: type, message }
+    : detailOrClassName ?? { channel: type, message };
+  const itemClassName = typeof detailOrClassName === "string"
+    ? detailOrClassName
+    : className;
+  return appendEvent(logOutput, {
+    title: `[${type}] ${message}`,
+    detail,
+    timestamp: Date.now(),
+    className: itemClassName,
   });
-  logOutput.append(item);
-  logOutput.scrollTop = logOutput.scrollHeight;
-  return item;
 };
+
+appendLog("SOCKET", "Connecting to harness…", { channel: "SOCKET", state: "connecting" });
+appendLog("PROMPT", "Waiting for connection", { channel: "PROMPT", state: "idle" });
 
 const selectWorkspace = async (path) => {
   if (!path) return;
@@ -1139,7 +1148,7 @@ const selectWorkspace = async (path) => {
   workspaceInput.value = path;
   filesWorkspaceLabel.textContent = path;
   socketService?.send({ type: "reset", sessionId });
-  appendLog("WORKSPACE", path);
+  appendLog("WORKSPACE", path, { channel: "WORKSPACE", path });
   persistRigSessions();
   await refreshWorkspaceTree();
 };
@@ -1173,7 +1182,7 @@ async function persistWorkspaceFile() {
   try {
     await saveWorkspaceFile(promptWorkspace, editingFilePath, fileEditorContent.value);
     fileEditorStatus.textContent = "Saved";
-    appendLog("FILE", `${editingFilePath} saved`);
+    appendLog("FILE", `${editingFilePath} saved`, { channel: "FILE", path: editingFilePath, action: "saved" });
     await refreshWorkspaceTree();
   } catch (error) {
     fileEditorStatus.textContent = error.message;
@@ -1274,6 +1283,7 @@ const setLogVisible = (visible) => {
   logToggle.title = visible ? "Hide live log" : "Show live log";
   logToggle.setAttribute("aria-label", logToggle.title);
   localStorage.setItem(LOG_VISIBLE_STORAGE_KEY, String(visible));
+  requestAnimationFrame(fitRigToViewport);
 };
 
 logToggle.addEventListener("click", () => {
@@ -1310,31 +1320,102 @@ const appendChatMessage = (role, text, className = "") => {
     children: [body],
   });
   chatOutput.append(message);
-  appendConversationHistory(role, text, message);
   scrollChatToEnd();
   return body;
 };
 
-function appendConversationHistory(role, text, messageElement) {
-  historyList.querySelector(".conversation-history-empty")?.remove();
-  const item = element("button", {
-    className: `conversation-history-item history-${role}`,
-    attrs: { type: "button", title: text },
-    children: [
-      element("strong", { text: role === "user" ? "YOU" : "HARNESS" }),
-      element("span", { text: text.replace(/\s+/g, " ").trim() }),
-    ],
-  });
-  item.addEventListener("click", () => {
-    messageElement.scrollIntoView({ behavior: "smooth", block: "center" });
-    messageElement.classList.add("history-target");
-    window.setTimeout(() => messageElement.classList.remove("history-target"), 900);
-  });
-  historyList.append(item);
-  const count = historyList.querySelectorAll(".conversation-history-item").length;
-  historyCount.textContent = `${count} message${count === 1 ? "" : "s"}`;
-  historyList.scrollTop = historyList.scrollHeight;
+function renderConversationMessages() {
+  chatOutput.replaceChildren();
+  if (!conversation.length) {
+    chatOutput.append(element("p", {
+      className: "rig-chat-empty",
+      text: "Send a prompt to begin the conversation.",
+    }));
+    return;
+  }
+  for (const message of conversation) {
+    appendChatMessage(message.role, message.text || "");
+  }
 }
+
+function renderConversationList() {
+  historyList.replaceChildren();
+  if (!sessions.length) {
+    historyList.append(element("p", { className: "conversation-history-empty", text: "No conversations yet." }));
+    historyCount.textContent = "0 conversations";
+    return;
+  }
+  const orderedSessions = [...sessions].sort((left, right) => (right.updatedAt || 0) - (left.updatedAt || 0));
+  for (const session of orderedSessions) {
+    const previewSource = [...(session.messages || [])].reverse().find((message) => message?.text?.trim());
+    const preview = previewSource?.text?.replace(/\s+/g, " ").trim() || session.workspace || "No messages yet.";
+    const item = element("button", {
+      className: `conversation-history-item${session.id === sessionId ? " active" : ""}`,
+      attrs: {
+        type: "button",
+        title: session.title || "New chat",
+        "aria-pressed": String(session.id === sessionId),
+      },
+      children: [
+        element("strong", { text: session.title || "New chat" }),
+        element("span", { text: preview }),
+      ],
+    });
+    item.addEventListener("click", () => switchRigSession(session.id));
+    historyList.append(item);
+  }
+  historyCount.textContent = `${sessions.length} conversation${sessions.length === 1 ? "" : "s"}`;
+}
+
+function switchRigSession(nextSessionId) {
+  if (runActive || nextSessionId === sessionId) return;
+  const nextSession = sessions.find((session) => session.id === nextSessionId);
+  if (!nextSession) return;
+  persistRigSessions();
+  activeRigSession = nextSession;
+  sessionId = nextSession.id;
+  applyConversationEffectStates(sessionId);
+  conversation = Array.isArray(nextSession.messages) ? nextSession.messages : [];
+  promptWorkspace = nextSession.workspace || promptWorkspace;
+  workspaceInput.value = promptWorkspace;
+  filesWorkspaceLabel.textContent = promptWorkspace;
+  runPromptsValue.textContent = String(conversation.filter((message) => message.role === "user").length);
+  renderConversationMessages();
+  renderConversationList();
+  resetHarnessDisplay();
+  refreshWorkspaceTree();
+  socketService?.send({ type: "reset", sessionId });
+  persistRigSessions();
+}
+
+function createRigConversation() {
+  if (runActive) return;
+  persistRigSessions();
+  const nextSession = createSession("New chat", promptWorkspace);
+  nextSession.messages = [];
+  nextSession.events = [];
+  nextSession.workspace = promptWorkspace;
+  nextSession.updatedAt = Date.now();
+  sessions = [nextSession, ...sessions];
+  activeRigSession = nextSession;
+  sessionId = nextSession.id;
+  applyConversationEffectStates(sessionId);
+  conversation = nextSession.messages;
+  runPromptsValue.textContent = "0";
+  runTokensValue.textContent = "0";
+  inputTokens = 0;
+  outputTokens = 0;
+  updateTokenMeters();
+  resetHarnessDisplay();
+  renderConversationMessages();
+  renderConversationList();
+  socketService?.send({ type: "reset", sessionId });
+  persistRigSessions();
+  appendLog("RESET", "New conversation created");
+  promptInput.focus();
+}
+
+newConversationButton.addEventListener("click", createRigConversation);
 
 const beginStream = () => {
   streamingText = "";
@@ -1363,7 +1444,6 @@ const finishStream = (text = "") => {
     appendMessageText(streamingBody, finalText);
     const message = streamingBody.closest(".rig-chat-message");
     message?.classList.remove("rig-chat-message-streaming");
-    if (finalText && message) appendConversationHistory("agent", finalText, message);
   }
   if (finalText) {
     conversation.push({ role: "agent", text: finalText });
@@ -1380,27 +1460,27 @@ const handleSocketMessage = (payload) => {
   if (payload.type === "ready") {
     modelEngine.setModel(payload.model);
     runModelValue.textContent = payload.model || "—";
-    appendLog("READY", `${payload.provider} · ${payload.model}`);
+    appendLog("READY", `${payload.provider} · ${payload.model}`, payload);
     return;
   }
   if (payload.type === "provider_settings") {
     modelEngine.setModel(payload.model);
     runModelValue.textContent = payload.model || "—";
-    appendLog("MODEL", payload.model || "Model updated");
+    appendLog("MODEL", payload.model || "Model updated", payload);
     return;
   }
   if (payload.type === "info") {
-    appendLog("INFO", payload.message || "Harness update");
+    appendLog("INFO", payload.message || "Harness update", payload);
     return;
   }
   if (payload.type === "tool") {
     setHarnessStage(payload.name === "mcp_approval_request" ? "mcp" : "tool");
-    appendLog("TOOL", `${payload.name}${payload.args ? ` ${JSON.stringify(payload.args)}` : ""}`);
+    appendLog("TOOL", payload.name || "Tool event", payload);
     return;
   }
   if (payload.type === "approval_request") {
     setHarnessStage("mcp");
-    appendLog("APPROVAL", payload.description || "Tool approval requested");
+    appendLog("APPROVAL", payload.description || "Tool approval requested", payload);
     const approved = window.confirm(`Allow this tool action?\n\n${payload.description || ""}`);
     socketService.send({
       type: "approval_response",
@@ -1412,7 +1492,7 @@ const handleSocketMessage = (payload) => {
   }
   if (payload.type === "approval") {
     setHarnessStage("mcp");
-    appendLog("APPROVAL", payload.approved ? "Approved" : "Denied");
+    appendLog("APPROVAL", payload.approved ? "Approved" : "Denied", payload);
     return;
   }
   if (payload.type === "agent_event") {
@@ -1425,7 +1505,7 @@ const handleSocketMessage = (payload) => {
     else if (eventType === "final") setHarnessStage("response");
     if (eventType === "turn") addResponseUsage(payload.event.serverResponse);
     if (eventType === "composer_complete") addResponseUsage({ usage: payload.event.usage });
-    appendLog("HARNESS", describeAgentEvent(payload.event));
+    appendLog("HARNESS", describeAgentEvent(payload.event), payload.event);
     return;
   }
   if (payload.type === "answer_start") {
@@ -1448,12 +1528,12 @@ const handleSocketMessage = (payload) => {
       outputChannel.removeAttribute("aria-current");
       if (activeHarnessStage === "output") activeHarnessStage = null;
     }, 5000);
-    appendLog("DONE", "Run completed");
+    appendLog("DONE", "Run completed", payload);
     return;
   }
   if (payload.type === "error") {
     setHarnessError();
-    appendLog("ERROR", payload.error || "Harness error", "log-error");
+    appendLog("ERROR", payload.error || "Harness error", payload, "log-error");
     appendChatMessage("agent", payload.error || "Harness error", "rig-chat-message-error");
     conversation.push({ role: "agent", text: payload.error || "Harness error" });
     persistRigSessions();
@@ -1470,7 +1550,7 @@ const connect = () => {
   socketService = new SocketService({
     onOpen() {
       setConnectionState("online", "LIVE");
-      appendLog("SOCKET", "Connected");
+      appendLog("SOCKET", "Connected", { channel: "SOCKET", state: "online" });
       socketService.send({ type: "provider_settings", ...modelSettings });
       socketService.send({ type: "tool_permissions", permissions: storedToolPermissions });
       promptInput.focus();
@@ -1479,12 +1559,12 @@ const connect = () => {
       stopPromptTimer();
       setRunActive(false);
       setConnectionState("offline", "OFFLINE");
-      appendLog("SOCKET", "Disconnected; reconnecting…");
+      appendLog("SOCKET", "Disconnected; reconnecting…", { channel: "SOCKET", state: "offline", reconnecting: true });
       reconnectTimer = window.setTimeout(connect, 1500);
     },
     onError() {
       setConnectionState("error", "ERROR");
-      appendLog("ERROR", "WebSocket connection failed", "log-error");
+      appendLog("ERROR", "WebSocket connection failed", { channel: "SOCKET", state: "error" }, "log-error");
     },
     onMessage: handleSocketMessage,
   });
@@ -1554,12 +1634,7 @@ rewindButton.addEventListener("click", () => {
   if (runActive) return;
   conversation.length = 0;
   if (activeRigSession) activeRigSession.title = "New chat";
-  chatOutput.replaceChildren(element("p", {
-    className: "rig-chat-empty",
-    text: "Send a prompt to begin the conversation.",
-  }));
-  historyList.replaceChildren(element("p", { className: "conversation-history-empty", text: "No messages yet." }));
-  historyCount.textContent = "0 messages";
+  renderConversationMessages();
   runPromptsValue.textContent = "0";
   runTokensValue.textContent = "0";
   inputTokens = 0;
@@ -1783,9 +1858,8 @@ const initializePromptStream = async () => {
     applyConversationEffectStates(sessionId);
     conversation = activeRigSession.messages;
     promptWorkspace = activeRigSession.workspace || health.workspace || ".";
-    for (const message of conversation) {
-      appendChatMessage(message.role, message.text || "");
-    }
+    renderConversationMessages();
+    renderConversationList();
     runPromptsValue.textContent = String(conversation.filter((message) => message.role === "user").length);
     const selectedProvider = Array.isArray(state.providers)
       ? state.providers.find((provider) => provider.selected)
@@ -1805,6 +1879,7 @@ const initializePromptStream = async () => {
   } catch (error) {
     appendLog("WARN", `Using default workspace: ${error.message}`);
   }
+  renderConversationList();
   workspaceInput.value = promptWorkspace;
   await refreshWorkspaceTree();
   connect();

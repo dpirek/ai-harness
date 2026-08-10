@@ -41,9 +41,11 @@ function eventIcon(title) {
   return "·";
 }
 
-function appendEvent(element, { title, detail, timestamp }) {
+function appendEvent(element, { title, detail, timestamp, className = "", open = false }) {
   const item = document.createElement("li");
+  if (className) item.className = className;
   const disclosure = document.createElement("details");
+  disclosure.open = open;
   const summary = document.createElement("summary");
   const icon = document.createElement("span");
   icon.className = "eventIcon";
@@ -73,6 +75,7 @@ function appendEvent(element, { title, detail, timestamp }) {
   item.append(disclosure);
   element.append(item);
   element.scrollTop = element.scrollHeight;
+  return item;
 }
 
 function renderEventList(element, events) {
