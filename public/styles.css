@@ -442,6 +442,7 @@ code {
 .columnVisibilityControls { display: flex; gap: 6px; margin-left: auto; }
 .columnVisibilityControls button { display: grid; width: 32px; height: 32px; place-items: center; border: 1px solid var(--line); border-radius: 8px; background: #151515; padding: 0; color: var(--muted); font-size: 1rem; }
 .columnVisibilityControls button:hover, .columnVisibilityControls button[aria-pressed="true"] { background: #242424; color: var(--text); }
+.workspaceExplorerIcon { display: block; width: 20px; height: 20px; }
 
 .workspacePicker {
   display: flex;
@@ -802,6 +803,7 @@ textarea:disabled {
 .filesHeader span { display: block; max-width: 210px; margin-top: 4px; overflow: hidden; color: var(--muted); font-size: .76rem; text-overflow: ellipsis; white-space: nowrap; }
 .filesHeaderActions { display: flex; gap: 6px; }
 .filesHeader button { min-width: 34px; height: 34px; border: 1px solid #333; border-radius: 8px; padding: 0 9px; }
+.filesHeader button .workspaceExplorerIcon { width: 18px; height: 18px; }
 .filesHeader button:disabled { cursor: not-allowed; opacity: .45; }
 .filesHeader #refreshFilesButton { width: 34px; padding: 0; font-size: 1.25rem; }
 .workspaceTree { flex: 1; min-height: 0; overflow: auto; padding: 10px 8px 20px; font-size: .9rem; }
