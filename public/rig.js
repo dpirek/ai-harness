@@ -9,7 +9,7 @@ import WorkspacePanel from "/components/workspace-panel.js";
 import "/components/modals/file-editor-modal.js";
 import "/components/modals/workspace-picker-modal.js";
 import { describeAgentEvent } from "/lib/event-rendering.js";
-import { workspaceExplorerIcon } from "/lib/icons.js";
+import { harnessWaveIcon, liveLogIcon, workspaceExplorerIcon } from "/lib/icons.js";
 import { appendMessageText } from "/lib/message-rendering.js";
 import { mcpBlocks, quoteToml, setToolBlockEnabled } from "/lib/mcp-config.js";
 import { normalizeToolPermissions } from "/lib/settings.js";
@@ -49,14 +49,23 @@ const element = (tag, { className, text, attrs = {}, children = [] } = {}) => {
   return node;
 };
 
+const app = document.querySelector(".app");
+const EXPLORER_VISIBLE_STORAGE_KEY = "ai-harness.rigExplorerVisible";
+const HISTORY_VISIBLE_STORAGE_KEY = "ai-harness.rigHistoryVisible";
+const LOG_VISIBLE_STORAGE_KEY = "ai-harness.rigLogVisible";
+const initialExplorerVisible = localStorage.getItem(EXPLORER_VISIBLE_STORAGE_KEY) === "true";
+const initialHistoryVisible = localStorage.getItem(HISTORY_VISIBLE_STORAGE_KEY) === "true";
+app.classList.add("ui-initializing");
+app.classList.toggle("explorer-hidden", !initialExplorerVisible);
+app.classList.toggle("history-hidden", !initialHistoryVisible);
+
 const runTimeValue = element("strong", { text: "00:00.0" });
 const runModelValue = element("strong", { text: "—" });
 const runTokensValue = element("strong", { text: "0" });
 const runPromptsValue = element("strong", { text: "0" });
-const displaySegment = (icon, label, value, className = "") => element("div", {
+const displaySegment = (label, value, className = "") => element("div", {
   className: `harness-display-segment ${className}`.trim(),
   children: [
-    element("span", { className: "harness-display-icon", text: icon, attrs: { "aria-hidden": "true" } }),
     element("div", { children: [value, element("small", { text: label })] }),
   ],
 });
@@ -78,10 +87,10 @@ const harnessRunDisplay = element("section", {
   className: "harness-run-display",
   attrs: { "aria-label": "Current prompt statistics" },
   children: [
-    displaySegment("◷", "elapsed", runTimeValue, "display-time"),
-    displaySegment("◇", "model", runModelValue, "display-model"),
-    displaySegment("Σ", "tokens", runTokensValue, "display-tokens"),
-    displaySegment("#", "prompts", runPromptsValue, "display-prompts"),
+    displaySegment("elapsed", runTimeValue, "display-time"),
+    displaySegment("model", runModelValue, "display-model"),
+    displaySegment("tokens", runTokensValue, "display-tokens"),
+    displaySegment("prompts", runPromptsValue, "display-prompts"),
   ],
 });
 const headerToolbar = document.querySelector(".topbar .toolbar");
@@ -109,15 +118,17 @@ const transportControls = element("div", {
   attrs: { role: "group", "aria-label": "Harness transport controls" },
   children: [rewindButton, stopButton, playButton, recordButton],
 });
-document.querySelector(".topbar .brand").after(transportControls);
+const topbarBrand = document.querySelector(".topbar .brand");
+topbarBrand.prepend(harnessWaveIcon());
+topbarBrand.after(transportControls);
 
 const explorerToggle = element("button", {
   className: "explorer-toggle",
   attrs: {
     type: "button",
-    title: "Hide file explorer",
-    "aria-label": "Hide file explorer",
-    "aria-pressed": "true",
+    title: initialExplorerVisible ? "Hide file explorer" : "Show file explorer",
+    "aria-label": initialExplorerVisible ? "Hide file explorer" : "Show file explorer",
+    "aria-pressed": String(initialExplorerVisible),
   },
   children: [workspaceExplorerIcon()],
 });
@@ -127,12 +138,13 @@ const historyToggle = element("button", {
   text: "◷",
   attrs: {
     type: "button",
-    title: "Hide conversation history",
-    "aria-label": "Hide conversation history",
-    "aria-pressed": "true",
+    title: initialHistoryVisible ? "Hide conversation history" : "Show conversation history",
+    "aria-label": initialHistoryVisible ? "Hide conversation history" : "Show conversation history",
+    "aria-pressed": String(initialHistoryVisible),
   },
 });
 const logToggle = document.querySelector(".topbar .log-toggle");
+logToggle.replaceChildren(liveLogIcon());
 const toolbarButtonGroup = element("div", {
   className: "toolbar-button-group",
   attrs: { role: "group", "aria-label": "Workspace controls" },
@@ -153,7 +165,7 @@ new ResizeObserver(positionHeaderSignalMeter).observe(topbar);
 
 const fileExplorer = new WorkspacePanel();
 fileExplorer.classList.add("rig-file-explorer");
-document.querySelector(".app").append(fileExplorer);
+app.append(fileExplorer);
 const historyList = element("div", {
   className: "conversation-history-list",
   children: [element("p", { className: "conversation-history-empty", text: "No messages yet." })],
@@ -169,7 +181,7 @@ const conversationHistory = element("aside", {
     historyList,
   ],
 });
-document.querySelector(".app").append(conversationHistory);
+app.append(conversationHistory);
 const workspacePickerModal = document.createElement("workspace-picker-modal");
 const fileEditorModal = document.createElement("file-editor-modal");
 document.body.append(workspacePickerModal, fileEditorModal);
@@ -244,11 +256,11 @@ const midiKeyboard = new MidiKeyboard({
 });
 const whisperModel = new WhisperModel();
 const inputChannel = createChannel({ title: "INPUT", tokenCount: 0, signalLevel: 0, direction: "input", color: "#e84431" });
-const inputComposer = createEffect({ color: "#e84431", icon: "#wave", title: "Input", subtitle: "Composer", step: "composer" });
+const inputComposer = createEffect({ color: "#e84431", icon: "wave", title: "Input", subtitle: "Composer", step: "composer" });
 const modelEngine = createEngine();
-const toolOrchestrator = createEffect({ color: "#8a3abd", icon: "#tools", title: "Tool", subtitle: "Orchestrator", step: "tools" });
-const mcpServers = createEffect({ color: "#168b83", icon: "#server-rig", title: "MCP", subtitle: "Servers", step: "mcp" });
-const outputValidator = createEffect({ color: "#dca813", icon: "#clip", title: "Evaluator", subtitle: "Suite", step: "validation" });
+const toolOrchestrator = createEffect({ color: "#8a3abd", icon: "tools", title: "Tool", subtitle: "Orchestrator", step: "tools" });
+const mcpServers = createEffect({ color: "#168b83", icon: "server-rig", title: "MCP", subtitle: "Servers", step: "mcp" });
+const outputValidator = createEffect({ color: "#dca813", icon: "clip", title: "Evaluator", subtitle: "Suite", step: "validation" });
 const responseRenderer = new CassettePlayer({
   handlers: {
     click: (event) => openStepPrompt(event.currentTarget),
@@ -832,10 +844,9 @@ const fitRigToViewport = () => {
     - parseFloat(styles.paddingTop)
     - parseFloat(styles.paddingBottom);
   const scale = Math.min(1, availableWidth / naturalWidth, availableHeight / naturalHeight);
+  const horizontalOffset = Math.max(0, (availableWidth - (naturalWidth * scale)) / 2);
 
-  chainViewport.style.width = `${naturalWidth * scale}px`;
-  chainViewport.style.height = `${naturalHeight * scale}px`;
-  rigChain.style.transform = `scale(${scale})`;
+  rigChain.style.transform = `translateX(${horizontalOffset}px) scale(${scale})`;
 };
 
 requestAnimationFrame(fitRigToViewport);
@@ -843,6 +854,13 @@ new ResizeObserver(fitRigToViewport).observe(rigContainer);
 
 let activeInputSource = microphone;
 const INPUT_SOURCE_STORAGE_KEY = "ai-harness.rigInputSource";
+const setPromptFooterMode = (microphoneSelected) => {
+  promptFooter.classList.remove("input-microphone", "input-keyboard");
+  promptFooter.classList.add(microphoneSelected ? "input-microphone" : "input-keyboard");
+  audioRecordingIndicator.hidden = !microphoneSelected;
+  promptInput.hidden = microphoneSelected;
+};
+
 function toggleInputSource() {
   if (activeInputSource === microphone && microphoneRecorder?.state === "recording") {
     appendLog("INPUT", "Stop the microphone recording before switching input sources");
@@ -855,10 +873,8 @@ function toggleInputSource() {
   renderSignalChain();
   if (activeHarnessStage === "input") setHarnessStage("input");
   appendLog("INPUT", nextSource === microphone ? "Microphone selected" : "MIDI keyboard selected");
-  const microphoneSelected = nextSource === microphone;
-  audioRecordingIndicator.hidden = !microphoneSelected;
-  promptInput.hidden = microphoneSelected;
-  localStorage.setItem(INPUT_SOURCE_STORAGE_KEY, microphoneSelected ? "microphone" : "keyboard");
+  setPromptFooterMode(nextSource === microphone);
+  localStorage.setItem(INPUT_SOURCE_STORAGE_KEY, nextSource === microphone ? "microphone" : "keyboard");
   requestAnimationFrame(fitRigToViewport);
   nextSource.focus();
 }
@@ -875,7 +891,7 @@ const promptInput = element("input", {
 });
 promptInput.hidden = true;
 
-const audioWaveBars = Array.from({ length: 28 }, () => element("i", {
+const audioWaveBars = Array.from({ length: 48 }, () => element("i", {
   className: "audio-track-bar",
   attrs: { "aria-hidden": "true" },
 }));
@@ -906,6 +922,7 @@ const promptFooter = element("footer", {
   className: "prompt-footer",
   children: [audioRecordingIndicator, promptInput],
 });
+setPromptFooterMode(true);
 
 const chatOutput = element("div", {
   className: "rig-chat-output",
@@ -982,9 +999,8 @@ rigContainer.insertAdjacentElement("afterend", workspace);
 const WORKSPACE_HEIGHT_STORAGE_KEY = "ai-harness.rigWorkspaceHeight";
 const setWorkspaceHeight = (requestedHeight, persist = true) => {
   const app = document.querySelector(".app");
-  const headerHeight = document.querySelector(".topbar").getBoundingClientRect().height;
   const bottomPadding = parseFloat(getComputedStyle(app).paddingBottom) || 0;
-  const maxHeight = Math.max(220, app.clientHeight - headerHeight - bottomPadding - 126);
+  const maxHeight = Math.max(220, app.clientHeight - bottomPadding - 126);
   const height = Math.round(Math.max(220, Math.min(maxHeight, requestedHeight)));
   app.style.setProperty("--rig-workspace-height", `${height}px`);
   app.classList.add("workspace-resized");
@@ -1227,41 +1243,41 @@ workspacePickerModal.addEventListener("workspace-picker-confirm", async () => {
 fileEditorModal.addEventListener("save-workspace-file", persistWorkspaceFile);
 
 const setExplorerVisible = (visible) => {
-  document.querySelector(".app").classList.toggle("explorer-hidden", !visible);
+  app.classList.toggle("explorer-hidden", !visible);
   explorerToggle.setAttribute("aria-pressed", String(visible));
   explorerToggle.title = visible ? "Hide file explorer" : "Show file explorer";
   explorerToggle.setAttribute("aria-label", explorerToggle.title);
-  localStorage.setItem("ai-harness.rigExplorerVisible", String(visible));
+  localStorage.setItem(EXPLORER_VISIBLE_STORAGE_KEY, String(visible));
   requestAnimationFrame(fitRigToViewport);
 };
 
 explorerToggle.addEventListener("click", () => {
-  setExplorerVisible(document.querySelector(".app").classList.contains("explorer-hidden"));
+  setExplorerVisible(app.classList.contains("explorer-hidden"));
 });
 
 const setHistoryVisible = (visible) => {
-  document.querySelector(".app").classList.toggle("history-hidden", !visible);
+  app.classList.toggle("history-hidden", !visible);
   historyToggle.setAttribute("aria-pressed", String(visible));
   historyToggle.title = visible ? "Hide conversation history" : "Show conversation history";
   historyToggle.setAttribute("aria-label", historyToggle.title);
-  localStorage.setItem("ai-harness.rigHistoryVisible", String(visible));
+  localStorage.setItem(HISTORY_VISIBLE_STORAGE_KEY, String(visible));
   requestAnimationFrame(fitRigToViewport);
 };
 
 historyToggle.addEventListener("click", () => {
-  setHistoryVisible(document.querySelector(".app").classList.contains("history-hidden"));
+  setHistoryVisible(app.classList.contains("history-hidden"));
 });
 
 const setLogVisible = (visible) => {
-  document.querySelector(".app").classList.toggle("log-hidden", !visible);
+  app.classList.toggle("log-hidden", !visible);
   logToggle.setAttribute("aria-pressed", String(visible));
   logToggle.title = visible ? "Hide live log" : "Show live log";
   logToggle.setAttribute("aria-label", logToggle.title);
-  localStorage.setItem("ai-harness.rigLogVisible", String(visible));
+  localStorage.setItem(LOG_VISIBLE_STORAGE_KEY, String(visible));
 };
 
 logToggle.addEventListener("click", () => {
-  setLogVisible(document.querySelector(".app").classList.contains("log-hidden"));
+  setLogVisible(app.classList.contains("log-hidden"));
 });
 
 const setConnectionState = (state, label) => {
@@ -1743,13 +1759,15 @@ window.addEventListener("blur", () => {
 const initializePromptStream = async () => {
   const storedInputSource = localStorage.getItem(INPUT_SOURCE_STORAGE_KEY);
   if (storedInputSource === "keyboard" && activeInputSource !== midiKeyboard) toggleInputSource();
-  setExplorerVisible(localStorage.getItem("ai-harness.rigExplorerVisible") !== "false");
-  setHistoryVisible(localStorage.getItem("ai-harness.rigHistoryVisible") !== "false");
-  setLogVisible(localStorage.getItem("ai-harness.rigLogVisible") !== "false");
+  requestAnimationFrame(() => setPromptFooterMode(activeInputSource === microphone));
+  setExplorerVisible(localStorage.getItem(EXPLORER_VISIBLE_STORAGE_KEY) === "true");
+  setHistoryVisible(localStorage.getItem(HISTORY_VISIBLE_STORAGE_KEY) === "true");
+  setLogVisible(localStorage.getItem(LOG_VISIBLE_STORAGE_KEY) !== "false");
   const storedWorkspaceHeight = Number(localStorage.getItem(WORKSPACE_HEIGHT_STORAGE_KEY));
   if (Number.isFinite(storedWorkspaceHeight) && storedWorkspaceHeight > 0) {
     setWorkspaceHeight(storedWorkspaceHeight, false);
   }
+  requestAnimationFrame(() => app.classList.remove("ui-initializing"));
   try {
     const [health, state] = await Promise.all([loadHealth(), loadUiState()]);
     sessions = Array.isArray(state.sessions) && state.sessions.length

@@ -172,13 +172,6 @@ body {
   text-transform: uppercase;
 }
 
-.harness-display-icon {
-  margin-top: -1px;
-  color: #55cfff;
-  font-size: 13px;
-  line-height: 1;
-}
-
 .display-time { width: 92px; }
 .display-model { width: clamp(108px, 10vw, 150px); }
 .display-tokens { width: 68px; }
@@ -1227,6 +1220,10 @@ cassette-player.cassette-player-unit:focus-visible {
   transition: padding-right 180ms ease;
 }
 
+.app.ui-initializing {
+  transition: none;
+}
+
 .app.explorer-hidden {
   padding-right: var(--rig-history-width);
 }
@@ -1318,6 +1315,11 @@ workspace-panel.rig-file-explorer {
   background: linear-gradient(145deg, #191d1f, #0f1213);
   box-shadow: -8px 0 20px #0007;
   transition: transform 180ms ease, visibility 180ms ease;
+}
+
+.app.ui-initializing workspace-panel.rig-file-explorer,
+.app.ui-initializing .rig-conversation-history {
+  transition: none;
 }
 
 .app.explorer-hidden workspace-panel.rig-file-explorer {
@@ -1765,30 +1767,34 @@ body {
   height: 100%;
   overflow: hidden;
 }
+body {
+  display: flex;
+  flex-direction: column;
+}
 .app {
   display: grid;
-  width: 100vw;
-  height: 100vh;
-  grid-template-rows: clamp(56px, 7.8vh, 80px) clamp(180px, 31vh, 330px) minmax(
-      180px,
-      1fr
-    ) clamp(88px, 13.3vh, 136px) clamp(54px, 7.2vh, 74px);
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
   overflow: hidden;
 }
 .topbar {
-  height: 100%;
+  flex: none;
   min-height: 0;
 }
 .rig {
+  grid-row: 1;
   width: 100%;
   min-height: 0;
   height: 100%;
   overflow: hidden;
-  padding: clamp(9.8px, 1.96vh, 21.56px) 28px clamp(5.88px, .98vh, 13.72px);
+  padding: clamp(14px, 1.8vh, 22px) 28px clamp(5.88px, .98vh, 13.72px);
 }
 
 .rig-chain-viewport {
   position: relative;
+  width: 100%;
+  height: 100%;
   flex: none;
 }
 
@@ -1799,7 +1805,7 @@ body {
   display: flex;
   align-items: center;
   width: max-content;
-  padding: 30px 0 14px;
+  padding: 0 0 14px;
   transform-origin: top left;
   will-change: transform;
 }
@@ -1946,20 +1952,16 @@ body {
   --rig-footer-height: clamp(54px, 7.2vh, 74px);
 }
 .app {
-  grid-template-rows: clamp(180px, 31vh, 330px) minmax(180px, 1fr);
-  padding-top: var(--rig-header-height);
+  grid-template-rows: minmax(0, clamp(180px, 31vh, 330px)) minmax(0, 1fr);
   padding-bottom: 22px;
 }
 
 .app.workspace-resized {
-  grid-template-rows: minmax(126px, 1fr) var(--rig-workspace-height);
+  grid-template-rows: minmax(0, 1fr) minmax(220px, var(--rig-workspace-height));
 }
 .topbar {
-  position: fixed;
+  position: relative;
   z-index: 100;
-  top: 0;
-  right: 0;
-  left: 0;
   width: 100%;
   height: var(--rig-header-height);
 }
@@ -2666,15 +2668,18 @@ rig-io.io.io-active .signal-fill {
 }
 
 .rig-workspace {
+  grid-row: 2;
   position: relative;
   display: grid;
+  width: 100%;
+  height: 100%;
   min-width: 0;
   min-height: 0;
   grid-template-columns: minmax(0, 2.35fr) minmax(280px, 1fr);
   gap: 14px;
   margin: 22px;
   padding: 0;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .rig-workspace-resize-handle {
@@ -2914,8 +2919,26 @@ rig-io.io.io-active .signal-fill {
 .audio-track-meta time { display: block; }
 .audio-track-meta strong { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .audio-track-meta time { margin-top: 3px; color: #70dfff; font: 11px ui-monospace, monospace; }
-.audio-track-waveform { display: flex; height: 34px; flex: 1; align-items: center; gap: 3px; overflow: hidden; }
-.audio-track-bar { width: 3px; height: 30%; flex: 1; max-width: 5px; border-radius: 2px; background: #325b62; transform-origin: center; }
+.audio-track-waveform {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.audio-track-bar {
+  width: auto;
+  min-width: 2px;
+  height: 30%;
+  flex: 1 1 0;
+  border-radius: 2px;
+  background: #325b62;
+  transform-origin: center;
+}
 .audio-track-record-button {
   display: grid;
   width: 40px;
@@ -3091,8 +3114,6 @@ rig-io.io.io-active .signal-fill {
 .harness-display-segment > div { overflow: hidden; }
 .harness-display-segment strong { font-size: clamp(10px, .9vw, 15px); }
 .harness-display-segment small { font-size: clamp(5px, .42vw, 7px); }
-.harness-display-icon { display: block; font-size: clamp(10px, .9vw, 14px); }
-
 .display-time,
 .display-model,
 .display-tokens,
@@ -3151,7 +3172,6 @@ rig-io.io.io-active .signal-fill {
     padding-inline: 12px;
   }
   .harness-run-display { max-width: 390px; }
-  .harness-display-icon { display: none; }
   .topbar .toolbar { padding-left: 10px; }
 }
 
@@ -3206,11 +3226,6 @@ rig-io.io.io-active .signal-fill {
   height: 100%;
   flex-direction: column;
   justify-content: center;
-}
-
-.harness-display-icon {
-  align-self: flex-start;
-  margin-top: 7px;
 }
 
 .transport-controls {
@@ -3323,36 +3338,21 @@ rig-io.io.io-active .signal-fill {
   display: flex;
   width: 100%;
   min-width: 0;
-  min-height: 0;
+  min-height: 76px;
   flex: none;
-  flex-direction: column;
+  flex-basis: 76px;
   margin: 0;
   border-top: 1px solid #3c4245;
   background: #0c1012;
-  padding: 8px 0;
   overflow: hidden;
-}
-
-.prompt-footer:has(.audio-recording-track:not([hidden])) {
-  height: 80px;
-  flex-basis: 80px;
-}
-
-.prompt-footer:has(.prompt-input:not([hidden])) {
-  height: 64px;
-  flex-basis: 64px;
-  padding-block: 6px;
 }
 
 .prompt-footer .prompt-input,
 .prompt-footer .audio-recording-track {
   width: 100%;
-  height: auto;
   min-width: 0;
   min-height: 0;
-  flex: 1 1 auto;
   margin: 0;
-  align-self: stretch;
   border-top: 0;
   border-right: 0;
   border-bottom: 0;
@@ -3361,11 +3361,22 @@ rig-io.io.io-active .signal-fill {
 }
 
 .prompt-footer .audio-recording-track {
-  padding: 7px 18px;
+  height: 100%;
+  align-items: center;
+  margin-right: 18px;
+  padding: 8px 18px;
 }
 
 .prompt-footer .prompt-input {
+  height: 100%;
   padding-inline: 18px;
+}
+
+.prompt-footer .audio-track-meta {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-self: stretch;
 }
 
 .prompt-footer .audio-track-record-button {

@@ -1,7 +1,8 @@
 import BaseComponent from "./base-component.js";
+import { harnessEffectIcon } from "/lib/icons.js";
 
 class GuitarEffect extends BaseComponent {
-  constructor({ color = "#555", icon = "#wave", title = "Effect", subtitle = "Module", step = "effect", enabled = true, handlers = {} } = {}) {
+  constructor({ color = "#555", icon = "wave", title = "Effect", subtitle = "Module", step = "effect", enabled = true, handlers = {} } = {}) {
     super();
     this.props = { color, icon, title, subtitle, step, enabled, handlers };
   }
@@ -23,6 +24,12 @@ class GuitarEffect extends BaseComponent {
   }
 
   render() {
+    const icon = harnessEffectIcon(this.props.icon);
+    if (icon) {
+      icon.setAttribute("viewBox", "0 0 64 64");
+      icon.setAttribute("aria-hidden", "true");
+      icon.setAttribute("focusable", "false");
+    }
     this.appendChildren(this, [
       this.createElement("div", { class: "led" }),
       this.createElement("div", { class: "knobs", children: [
@@ -30,12 +37,7 @@ class GuitarEffect extends BaseComponent {
         this.createElement("i", { class: "knob" }),
         this.createElement("i", { class: "knob" }),
       ] }),
-      this.createElement("svg", {
-        "aria-hidden": "true",
-        focusable: "false",
-        viewBox: "0 0 64 64",
-        children: [this.createElement("use", { href: this.props.icon })],
-      }),
+      icon,
       this.createElement("b", { textContent: this.props.title }),
       this.createElement("span", { textContent: this.props.subtitle }),
       this.createElement("button", {
