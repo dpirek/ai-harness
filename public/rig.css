@@ -1855,6 +1855,15 @@ workspace-panel.rig-file-explorer {
   padding: 18px;
 }
 
+.fileEditorBody {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 0;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
 .fileEditorPanel textarea {
   width: 100%;
   min-height: 0;
@@ -1869,6 +1878,53 @@ workspace-panel.rig-file-explorer {
   font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
+.fileEditorPreview {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #343a3d;
+  border-radius: 8px;
+  background: #090c0d;
+}
+
+.fileEditorPreviewHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid #292d34;
+  background: #151a1c;
+  padding: 10px 12px;
+}
+
+.fileEditorPreviewHeader strong {
+  font-size: 10px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.fileEditorPreviewHeader span {
+  color: #959b9d;
+  font-size: 11px;
+}
+
+.fileEditorPreviewContent {
+  min-height: 0;
+  flex: 1 1 0;
+  margin: 0;
+  overflow: auto;
+  padding: 14px;
+  color: #d7dae0;
+  font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.fileEditorPreviewContent code {
+  display: block;
+  white-space: pre;
+}
+
 .primaryButton,
 #saveFileEditorButton,
 #confirmWorkspacePickerButton {
@@ -1879,6 +1935,16 @@ workspace-panel.rig-file-explorer {
 #fileEditorStatus {
   color: #92989a;
   font-size: 12px;
+}
+
+@media (max-width: 900px) {
+  .fileEditorBody {
+    grid-template-columns: 1fr;
+  }
+
+  .fileEditorPreview {
+    min-height: 240px;
+  }
 }
 
 @media (max-width: 1200px) {
@@ -2984,13 +3050,26 @@ rig-io.io.io-active .signal-fill {
   white-space: pre;
 }
 
-.rig-chat-message-body .syntax-comment { color: #7f8996; font-style: italic; }
-.rig-chat-message-body .syntax-keyword { color: #c792ea; }
-.rig-chat-message-body .syntax-string { color: #c3e88d; }
-.rig-chat-message-body .syntax-number { color: #f78c6c; }
-.rig-chat-message-body .syntax-tag { color: #f07178; }
-.rig-chat-message-body .syntax-property { color: #82aaff; }
-.rig-chat-message-body .syntax-operator { color: #89ddff; }
+.rig-chat-message-body .syntax-comment,
+.fileEditorPreview .syntax-comment { color: #7f8996; font-style: italic; }
+
+.rig-chat-message-body .syntax-keyword,
+.fileEditorPreview .syntax-keyword { color: #c792ea; }
+
+.rig-chat-message-body .syntax-string,
+.fileEditorPreview .syntax-string { color: #c3e88d; }
+
+.rig-chat-message-body .syntax-number,
+.fileEditorPreview .syntax-number { color: #f78c6c; }
+
+.rig-chat-message-body .syntax-tag,
+.fileEditorPreview .syntax-tag { color: #f07178; }
+
+.rig-chat-message-body .syntax-property,
+.fileEditorPreview .syntax-property { color: #82aaff; }
+
+.rig-chat-message-body .syntax-operator,
+.fileEditorPreview .syntax-operator { color: #89ddff; }
 
 .rig-chat-message-user {
   justify-content: flex-end;

@@ -9,6 +9,7 @@ import WorkspacePanel from "/components/workspace-panel.js";
 import "/components/modals/file-editor-modal.js";
 import "/components/modals/workspace-picker-modal.js";
 import { appendEvent, describeAgentEvent } from "/lib/event-rendering.js";
+import { codeLanguageLabel, renderFilePreview } from "/lib/file-utils.js";
 import { harnessWaveIcon, liveLogIcon, workspaceExplorerIcon } from "/lib/icons.js";
 import { appendMessageText } from "/lib/message-rendering.js";
 import { mcpBlocks, quoteToml, setToolBlockEnabled } from "/lib/mcp-config.js";
@@ -208,6 +209,8 @@ const fileEditorDialog = fileEditorModal.querySelector("#fileEditorDialog");
 const fileEditorTitle = fileEditorModal.querySelector("#fileEditorTitle");
 const fileEditorPath = fileEditorModal.querySelector("#fileEditorPath");
 const fileEditorContent = fileEditorModal.querySelector("#fileEditorContent");
+const fileEditorLanguage = fileEditorModal.querySelector("#fileEditorLanguage");
+const fileEditorPreviewCode = fileEditorModal.querySelector("#fileEditorPreviewCode");
 const fileEditorStatus = fileEditorModal.querySelector("#fileEditorStatus");
 const saveFileEditorButton = fileEditorModal.querySelector("#saveFileEditorButton");
 
@@ -265,7 +268,7 @@ const midiKeyboard = new MidiKeyboard({
   },
 });
 const whisperModel = new WhisperModel();
-const inputChannel = createChannel({ title: "INPUT", tokenCount: 0, signalLevel: 0, direction: "input", color: "#e84431" });
+const inputChannel = new RigIO({ title: "INPUT", tokenCount: 0, signalLevel: 0, direction: "input", color: "#e84431" });
 const inputComposer = createEffect({ color: "#e84431", icon: "wave", title: "Input", subtitle: "Composer", step: "composer" });
 const modelEngine = createEngine();
 const toolOrchestrator = createEffect({ color: "#8a3abd", icon: "tools", title: "Tool", subtitle: "Orchestrator", step: "tools" });
@@ -277,7 +280,7 @@ const responseRenderer = new CassettePlayer({
     keydown: openPromptWithKeyboard,
   },
 });
-const outputChannel = createChannel({ title: "OUTPUT", tokenCount: 0, signalLevel: 0, direction: "output", color: "#2479cf" });
+const outputChannel = new RigIO({ title: "OUTPUT", tokenCount: 0, signalLevel: 0, direction: "output", color: "#2479cf" });
 
 const signalUnits = [
   microphone,
@@ -334,14 +337,12 @@ const harnessStages = [
 const stepPromptConfig = new Map([
   [microphone, { title: "Microphone Input", keys: ["agent_instructions"] }],
   [midiKeyboard, { title: "MIDI Keyboard Input", keys: ["agent_instructions"] }],
-  [inputChannel, { title: "Input Signal", keys: ["agent_instructions"] }],
   [inputComposer, { title: "Input Composer", keys: ["prompt_refinement"] }],
   [modelEngine, { title: "Model Engine", keys: ["agent_instructions", "workspace_context"] }],
   [toolOrchestrator, { title: "Tool Orchestrator", keys: ["tool_contract"], showToolSettings: true }],
   [mcpServers, { title: "MCP Servers", keys: ["tool_contract"], showMcpSettings: true }],
   [outputValidator, { title: "Output Validation", keys: ["validation_reminder"] }],
   [responseRenderer, { title: "Final Response", keys: ["agent_instructions"] }],
-  [outputChannel, { title: "Output Signal", keys: ["agent_instructions", "validation_reminder"] }],
 ]);
 
 const promptModalTitle = element("h2", { text: "System Prompts", attrs: { id: "stepPromptModalTitle" } });
@@ -1073,6 +1074,11 @@ let workspacePickerParent = null;
 let pendingWorkspacePath = null;
 let editingFilePath = null;
 
+const updateFileEditorPreview = (filePath, content) => {
+  const language = renderFilePreview(fileEditorPreviewCode, content, { filePath });
+  fileEditorLanguage.textContent = codeLanguageLabel(language || "plaintext");
+};
+
 const updateTransportButtonState = () => {
   if (runActive) {
     const continueMode = runPaused || runPauseRequested;
@@ -1185,6 +1191,7 @@ async function openWorkspaceFile(node) {
   fileEditorTitle.textContent = node.name;
   fileEditorPath.textContent = node.path;
   fileEditorContent.value = "";
+  updateFileEditorPreview(node.path, "");
   fileEditorContent.disabled = true;
   saveFileEditorButton.disabled = true;
   fileEditorStatus.textContent = "Loading…";
@@ -1193,6 +1200,7 @@ async function openWorkspaceFile(node) {
     const content = await loadWorkspaceFile(promptWorkspace, node.path);
     if (editingFilePath !== node.path || !fileEditorDialog.open) return;
     fileEditorContent.value = content;
+    updateFileEditorPreview(node.path, content);
     fileEditorContent.disabled = false;
     saveFileEditorButton.disabled = false;
     fileEditorStatus.textContent = "";
@@ -1277,6 +1285,9 @@ workspacePickerModal.addEventListener("workspace-picker-confirm", async () => {
   await selectWorkspace(pendingWorkspacePath);
 });
 fileEditorModal.addEventListener("save-workspace-file", persistWorkspaceFile);
+fileEditorContent.addEventListener("input", () => {
+  updateFileEditorPreview(editingFilePath, fileEditorContent.value);
+});
 
 const setExplorerVisible = (visible) => {
   app.classList.toggle("explorer-hidden", !visible);

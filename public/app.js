@@ -4,6 +4,7 @@ import WorkspacePanel from "./components/workspace-panel.js";
 import StreamPanel from "./components/stream-panel.js";
 import ColumnResizeHandle from "./components/column-resize-handle.js";
 import { mountAppShell } from "./components/app-shell.js";
+import { codeLanguageLabel, renderFilePreview } from "./lib/file-utils.js";
 import { appendMessageText } from "./lib/message-rendering.js";
 import {
   defaultProviderSettings,
@@ -111,6 +112,8 @@ const fileEditorDialog = document.querySelector("#fileEditorDialog");
 const fileEditorTitle = document.querySelector("#fileEditorTitle");
 const fileEditorPath = document.querySelector("#fileEditorPath");
 const fileEditorContent = document.querySelector("#fileEditorContent");
+const fileEditorLanguage = document.querySelector("#fileEditorLanguage");
+const fileEditorPreviewCode = document.querySelector("#fileEditorPreviewCode");
 const fileEditorStatus = document.querySelector("#fileEditorStatus");
 const saveFileEditorButton = document.querySelector("#saveFileEditorButton");
 
@@ -129,6 +132,11 @@ let pendingWorkspacePath = null;
 let workspacePickerRoot = null;
 let workspacePickerParent = null;
 let editingFilePath = null;
+
+function updateFileEditorPreview(filePath, content) {
+  const language = renderFilePreview(fileEditorPreviewCode, content, { filePath });
+  fileEditorLanguage.textContent = codeLanguageLabel(language || "plaintext");
+}
 
 const MIN_STREAM_WIDTH = 260;
 const MIN_SIDEBAR_WIDTH = 220;
@@ -324,6 +332,7 @@ async function openFileEditor(node) {
   fileEditorTitle.textContent = node.name;
   fileEditorPath.textContent = node.path;
   fileEditorContent.value = "";
+  updateFileEditorPreview(node.path, "");
   fileEditorContent.disabled = true;
   saveFileEditorButton.disabled = true;
   fileEditorStatus.textContent = "Loading…";
@@ -332,6 +341,7 @@ async function openFileEditor(node) {
     const content = await loadWorkspaceFile(workspace, node.path);
     if (editingFilePath !== node.path || !fileEditorDialog.open) return;
     fileEditorContent.value = content;
+    updateFileEditorPreview(node.path, content);
     fileEditorContent.disabled = false;
     saveFileEditorButton.disabled = false;
     fileEditorStatus.textContent = "";
@@ -359,6 +369,10 @@ async function saveEditedFile() {
     saveFileEditorButton.disabled = false;
   }
 }
+
+fileEditorContent.addEventListener("input", () => {
+  updateFileEditorPreview(editingFilePath, fileEditorContent.value);
+});
 
 async function loadWorkspaceTree() {
   const selectedWorkspace = activeSession()?.workspace || defaultWorkspace;
