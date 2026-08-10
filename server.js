@@ -329,6 +329,66 @@ async function handleWorkspaceFileApi(req, res, url) {
   }
 }
 
+async function handleWorkspaceRecordingApi(req, res) {
+  if (req.method !== "POST") { res.writeHead(405, { allow: "POST" }); res.end(); return; }
+  try {
+    const body = JSON.parse(await readRequestBody(req, 34_000_000) || "{}");
+    const formats = new Map([
+      ["audio/webm", "webm"],
+      ["audio/webm;codecs=opus", "webm"],
+      ["audio/ogg", "ogg"],
+      ["audio/ogg;codecs=opus", "ogg"],
+      ["audio/mp4", "m4a"],
+    ]);
+    const extension = formats.get(body.mimeType);
+    if (!extension || typeof body.data !== "string") throw new Error("Unsupported microphone recording format.");
+    if (!/^[A-Za-z0-9+/]*={0,2}$/.test(body.data)) throw new Error("Invalid recording data.");
+    const recording = Buffer.from(body.data, "base64");
+    if (!recording.length) throw new Error("The microphone recording is empty.");
+    if (recording.length > 24_000_000) throw new Error("Recording is too large (24 MB maximum).");
+    const root = await resolveWorkspace(body.workspace);
+    const directory = path.join(root, "recordings");
+    await fs.mkdir(directory, { recursive: true });
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const file = path.join(directory, `microphone-${timestamp}.${extension}`);
+    await fs.writeFile(file, recording);
+    json(res, 200, { ok: true, path: file, relativePath: path.relative(root, file), size: recording.length });
+  } catch (error) {
+    json(res, 400, { ok: false, error: error.message });
+  }
+}
+
+async function handleWorkspaceTranscriptionApi(req, res) {
+  if (req.method !== "POST") { res.writeHead(405, { allow: "POST" }); res.end(); return; }
+  try {
+    const body = JSON.parse(await readRequestBody(req, 100_000) || "{}");
+    const { file, stat } = await resolveWorkspaceFile(body.workspace, body.path);
+    const supportedExtensions = new Set([".webm", ".ogg", ".mp4", ".m4a", ".wav", ".mp3", ".mpeg", ".mpga", ".flac"]);
+    if (!supportedExtensions.has(path.extname(file).toLowerCase())) throw new Error("Unsupported transcription audio format.");
+    if (stat.size > 24_000_000) throw new Error("Recording is too large to transcribe (24 MB maximum).");
+    const storedSettings = uiStateStore.getAll().providerSettings || {};
+    const apiKey = process.env.OPENAI_API_KEY || storedSettings.apiKey;
+    if (!apiKey) throw new Error("Configure an OpenAI API key before using microphone transcription.");
+
+    const form = new FormData();
+    form.append("model", "whisper-1");
+    form.append("file", new Blob([await fs.readFile(file)]), path.basename(file));
+    const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { authorization: `Bearer ${apiKey}` },
+      body: form,
+      signal: AbortSignal.timeout(120_000),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error?.message || `OpenAI transcription failed (${response.status}).`);
+    const text = typeof payload.text === "string" ? payload.text.trim() : "";
+    if (!text) throw new Error("OpenAI returned an empty transcription.");
+    json(res, 200, { ok: true, text, model: "whisper-1" });
+  } catch (error) {
+    json(res, 400, { ok: false, error: error.message });
+  }
+}
+
 function resolvePublicPath(urlPath) {
   const decoded = decodeURIComponent(urlPath);
   const target = decoded === "/" ? "/index.html" : decoded;
@@ -505,7 +565,7 @@ async function resolveWorkspace(requested) {
   return fs.realpath(root);
 }
 
-async function createAgentSession(socket, sessionId, streamStates, root, pendingApprovals) {
+async function createAgentSession(socket, sessionId, streamStates, root, pendingApprovals, disabledSteps = []) {
   const storedSettings = uiStateStore.getAll().providerSettings || {};
   const settings = { ...storedSettings, ...(providerSettings.get(socket) || {}) };
   const provider = normalizeProvider(settings.provider || process.env.AI_PROVIDER);
@@ -564,14 +624,15 @@ async function createAgentSession(socket, sessionId, streamStates, root, pending
   const permissions = normalizeToolPermissions(toolPermissions.get(socket));
   // Enabling a built-in tool in the web Tools settings is the user's
   // authorization to execute it. Disabled tools are not exposed to the model.
-  const localTools = createTools({ root, approve: async () => true })
+  const disabled = new Set(disabledSteps);
+  const localTools = disabled.has("tools") ? [] : createTools({ root, approve: async () => true })
     .filter((tool) => permissions[tool.name] === true);
-  const mcpTools = await loadMcpTools({
-    root,
-    configContent: uiStateStore.getMcpConfig() || "",
-    approve: approveMcp,
-    onInfo,
-  });
+  const mcpTools = disabled.has("mcp") ? [] : await loadMcpTools({
+      root,
+      configContent: uiStateStore.getMcpConfig() || "",
+      approve: approveMcp,
+      onInfo,
+    });
   return new CodingAgent({
     client,
     tools: [...localTools, ...mcpTools],
@@ -583,6 +644,7 @@ async function createAgentSession(socket, sessionId, streamStates, root, pending
     onEvent,
     onTextDelta,
     systemPrompts: uiStateStore.getSystemPrompts(),
+    disabledSteps,
   });
 }
 
@@ -723,24 +785,33 @@ function handleWebSocket(socket, req) {
         running = true;
         try {
           const root = await resolveWorkspace(payload.workspace);
+          const allowedSteps = new Set(["composer", "tools", "mcp", "validation", "response"]);
+          const disabledSteps = Array.isArray(payload.disabledSteps)
+            ? [...new Set(payload.disabledSteps.filter((step) => allowedSteps.has(step)))]
+            : [];
+          const stepsKey = disabledSteps.slice().sort().join(",");
           let entry = agentSessions.get(sessionId);
-          const hasExistingAgent = entry?.root === root;
+          const hasExistingAgent = entry?.root === root && entry?.stepsKey === stepsKey;
           if (!hasExistingAgent) {
             entry = {
               root,
-              promise: createAgentSession(socket, sessionId, streamStates, root, pendingApprovals),
+              stepsKey,
+              promise: createAgentSession(socket, sessionId, streamStates, root, pendingApprovals, disabledSteps),
             };
             agentSessions.set(sessionId, entry);
           }
           const agent = await entry.promise;
-          const prompt = hasExistingAgent
+          const composedPrompt = disabledSteps.includes("composer")
             ? payload.prompt
-            : promptWithHistory(payload.prompt, payload.history);
+            : await agent.refinePrompt(payload.prompt);
+          const prompt = hasExistingAgent
+            ? composedPrompt
+            : promptWithHistory(composedPrompt, payload.history);
           streamStates.set(sessionId, { started: false });
           const text = await agent.run({
             text: prompt,
             images: requestImages(payload),
-          });
+          }, { disabledSteps });
           sendJson(socket, { type: "done", text, sessionId });
           streamStates.delete(sessionId);
         } catch (error) {
@@ -818,6 +889,14 @@ const server = http.createServer(async (req, res) => {
   }
   if (url.pathname === "/api/workspace-file") {
     await handleWorkspaceFileApi(req, res, url);
+    return;
+  }
+  if (url.pathname === "/api/workspace-recording") {
+    await handleWorkspaceRecordingApi(req, res);
+    return;
+  }
+  if (url.pathname === "/api/workspace-transcription") {
+    await handleWorkspaceTranscriptionApi(req, res);
     return;
   }
   await serveStatic(req, res);

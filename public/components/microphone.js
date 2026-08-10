@@ -58,7 +58,7 @@ class Microphone extends BaseComponent {
           this.gradient("mic-dark-metal", [["0", "#101213"], [".48", "#777d7e"], [".58", "#25292a"], ["1", "#090a0b"]]),
         ] }),
         this.createElement("ellipse", { cx: "70", cy: "225", rx: "55", ry: "12", class: "microphone-shadow" }),
-        this.createElement("rect", { x: "94", y: "118.5", width: "46", height: "5", class: "microphone-signal-lead" }),
+        this.createElement("rect", { x: "108", y: "118.5", width: "32", height: "5", class: "microphone-signal-lead" }),
         this.createElement("ellipse", { cx: "70", cy: "214", rx: "50", ry: "16", class: "microphone-base" }),
         this.createElement("rect", { x: "65", y: "151", width: "10", height: "59", rx: "5", class: "microphone-stem" }),
         this.createElement("ellipse", { cx: "70", cy: "207", rx: "13", ry: "7", class: "microphone-collar" }),

@@ -1,6 +1,8 @@
 import GuitarEffect from "/components/guitar-effect.js";
 import ModelEngine from "/components/model-engine.js";
 import Microphone from "/components/microphone.js";
+import MidiKeyboard from "/components/midi-keyboard.js";
+import WhisperModel from "/components/whisper-model.js";
 import RigIO from "/components/rig-io.js";
 import WorkspacePanel from "/components/workspace-panel.js";
 import "/components/modals/file-editor-modal.js";
@@ -14,7 +16,13 @@ import { createSession, titleFromPrompt } from "/lib/sessions.js";
 import { renderWorkspaceNodes, renderWorkspacePicker } from "/lib/workspace-rendering.js";
 import { loadConfig, loadHealth, loadProviderModels, loadSystemPrompts, saveConfig, saveSystemPrompt } from "/services/settings-api.js";
 import { loadUiState, saveUiState } from "/services/ui-state-api.js";
-import { loadWorkspaceFile, loadWorkspaceTree, saveWorkspaceFile } from "/services/workspace-api.js";
+import {
+  loadWorkspaceFile,
+  loadWorkspaceTree,
+  saveWorkspaceFile,
+  saveWorkspaceRecording,
+  transcribeWorkspaceRecording,
+} from "/services/workspace-api.js";
 import SocketService from "/services/socket-service.js";
 
 const openPromptWithKeyboard = (event) => {
@@ -93,7 +101,7 @@ const transportButton = (className, icon, label) => element("button", {
 const rewindButton = transportButton("transport-rewind", "◀◀", "Reset conversation");
 const stopButton = transportButton("transport-stop", "■", "Stop current run");
 const playButton = transportButton("transport-play", "▶", "Send prompt");
-const recordButton = transportButton("transport-record", "●", "Enable recording");
+const recordButton = transportButton("transport-record", "●", "Record microphone (hold ⌘1)");
 recordButton.setAttribute("aria-pressed", "false");
 const transportControls = element("div", {
   className: "transport-controls",
@@ -220,25 +228,38 @@ const createChannel = (props) => new RigIO({
   },
 });
 
+const toggleInputSourceWithKeyboard = (event) => {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  event.preventDefault();
+  toggleInputSource();
+};
 const microphone = new Microphone({
   title: "Microphone",
   subtitle: "Capture",
   handlers: {
-    click: (event) => openStepPrompt(event.currentTarget),
-    keydown: openPromptWithKeyboard,
+    click: () => toggleInputSource(),
+    keydown: toggleInputSourceWithKeyboard,
   },
 });
+const midiKeyboard = new MidiKeyboard({
+  handlers: {
+    click: () => toggleInputSource(),
+    keydown: toggleInputSourceWithKeyboard,
+  },
+});
+const whisperModel = new WhisperModel();
 const inputChannel = createChannel({ title: "INPUT", tokenCount: 0, signalLevel: 0, direction: "input", color: "#e84431" });
-const inputComposer = createEffect({ color: "#e84431", icon: "#wave", title: "Input", subtitle: "Composer" });
+const inputComposer = createEffect({ color: "#e84431", icon: "#wave", title: "Input", subtitle: "Composer", step: "composer" });
 const modelEngine = createEngine();
-const toolOrchestrator = createEffect({ color: "#8a3abd", icon: "#tools", title: "Tool", subtitle: "Orchestrator" });
-const mcpServers = createEffect({ color: "#168b83", icon: "#mcp", title: "MCP", subtitle: "Servers" });
-const outputValidator = createEffect({ color: "#dca813", icon: "#clip", title: "Evaluator", subtitle: "Suite" });
-const responseRenderer = createEffect({ color: "#216bbe", icon: "#code", title: "Response", subtitle: "Renderer" });
+const toolOrchestrator = createEffect({ color: "#8a3abd", icon: "#tools", title: "Tool", subtitle: "Orchestrator", step: "tools" });
+const mcpServers = createEffect({ color: "#168b83", icon: "#server-rig", title: "MCP", subtitle: "Servers", step: "mcp" });
+const outputValidator = createEffect({ color: "#dca813", icon: "#clip", title: "Evaluator", subtitle: "Suite", step: "validation" });
+const responseRenderer = createEffect({ color: "#216bbe", icon: "#code", title: "Response", subtitle: "Renderer", step: "response" });
 const outputChannel = createChannel({ title: "OUTPUT", tokenCount: 0, signalLevel: 0, direction: "output", color: "#2479cf" });
 
 const signalUnits = [
   microphone,
+  whisperModel,
   inputChannel,
   inputComposer,
   modelEngine,
@@ -249,9 +270,37 @@ const signalUnits = [
   outputChannel,
 ];
 const signalConnectors = [];
+const guitarEffects = [inputComposer, toolOrchestrator, mcpServers, outputValidator, responseRenderer];
+
+const disabledEffectSteps = () => guitarEffects
+  .filter((effect) => !effect.enabled)
+  .map((effect) => effect.dataset.step);
+
+const EFFECT_STATES_STORAGE_KEY = "ai-harness.rigEffectStatesByConversation";
+let effectStatesByConversation = {};
+try {
+  effectStatesByConversation = JSON.parse(localStorage.getItem(EFFECT_STATES_STORAGE_KEY) || "{}");
+} catch {
+  localStorage.removeItem(EFFECT_STATES_STORAGE_KEY);
+}
+
+const applyConversationEffectStates = (conversationId) => {
+  const states = effectStatesByConversation[conversationId] || {};
+  guitarEffects.forEach((effect) => effect.setEnabled(states[effect.dataset.step] !== false, false));
+};
+
+document.addEventListener("effect-toggle", (event) => {
+  const states = Object.fromEntries(guitarEffects.map((effect) => [effect.dataset.step, effect.enabled]));
+  effectStatesByConversation[sessionId] = states;
+  localStorage.setItem(EFFECT_STATES_STORAGE_KEY, JSON.stringify(effectStatesByConversation));
+  appendLog("FLOW", `${event.detail.step} ${event.detail.enabled ? "enabled" : "bypassed"}`);
+  if (activeHarnessStage) setHarnessStage(activeHarnessStage);
+});
 
 const harnessStages = [
-  { name: "input", units: [microphone, inputChannel, inputComposer] },
+  { name: "capture", units: [microphone] },
+  { name: "transcription", units: [whisperModel] },
+  { name: "input", units: [inputChannel, inputComposer] },
   { name: "model", units: [modelEngine] },
   { name: "tool", units: [toolOrchestrator] },
   { name: "mcp", units: [mcpServers] },
@@ -262,8 +311,9 @@ const harnessStages = [
 
 const stepPromptConfig = new Map([
   [microphone, { title: "Microphone Input", keys: ["agent_instructions"] }],
+  [midiKeyboard, { title: "MIDI Keyboard Input", keys: ["agent_instructions"] }],
   [inputChannel, { title: "Input Signal", keys: ["agent_instructions"] }],
-  [inputComposer, { title: "Input Composer", keys: ["agent_instructions"] }],
+  [inputComposer, { title: "Input Composer", keys: ["prompt_refinement"] }],
   [modelEngine, { title: "Model Engine", keys: ["agent_instructions", "workspace_context"] }],
   [toolOrchestrator, { title: "Tool Orchestrator", keys: ["tool_contract"], showToolSettings: true }],
   [mcpServers, { title: "MCP Servers", keys: ["tool_contract"], showMcpSettings: true }],
@@ -689,12 +739,17 @@ const visitedHarnessStages = new Set();
 let activeHarnessStage = null;
 
 const setHarnessStage = (stageName) => {
-  if (stageName === "input") visitedHarnessStages.clear();
+  if (stageName === "capture" || (stageName === "input" && activeHarnessStage !== "transcription")) visitedHarnessStages.clear();
   if (activeHarnessStage && activeHarnessStage !== stageName) {
     visitedHarnessStages.add(activeHarnessStage);
   }
-  activeHarnessStage = stageName;
-  const activeIndex = harnessStages.findIndex(({ name }) => name === stageName);
+  let activeIndex = harnessStages.findIndex(({ name }) => name === stageName);
+  while (activeIndex >= 0 && activeIndex < harnessStages.length &&
+    harnessStages[activeIndex].units.every((unit) => unit instanceof GuitarEffect && !unit.enabled)) {
+    visitedHarnessStages.add(harnessStages[activeIndex].name);
+    activeIndex += 1;
+  }
+  activeHarnessStage = harnessStages[activeIndex]?.name || stageName;
   const activeUnitIndex = activeIndex >= 0
     ? signalUnits.indexOf(harnessStages[activeIndex].units[0])
     : -1;
@@ -703,8 +758,9 @@ const setHarnessStage = (stageName) => {
   });
   harnessStages.forEach(({ name, units }, index) => {
     units.forEach((unit) => {
-      unit.classList.toggle("process-active", index === activeIndex);
-      unit.classList.toggle("process-complete", visitedHarnessStages.has(name));
+      const unitEnabled = !(unit instanceof GuitarEffect) || unit.enabled;
+      unit.classList.toggle("process-active", index === activeIndex && unitEnabled);
+      unit.classList.toggle("process-complete", visitedHarnessStages.has(name) && unitEnabled);
       unit.classList.remove("process-error");
       if (index === activeIndex) unit.setAttribute("aria-current", "step");
       else unit.removeAttribute("aria-current");
@@ -741,14 +797,19 @@ const rigChain = element("div", { className: "rig-chain" });
 chainViewport.append(rigChain);
 rigContainer.append(chainViewport);
 
-signalUnits.forEach((unit, index) => {
-  rigChain.append(unit);
-  if (index < signalUnits.length - 1) {
-    const wire = connector("jack");
-    signalConnectors.push(wire);
-    rigChain.append(wire);
-  }
-});
+const renderSignalChain = () => {
+  rigChain.replaceChildren();
+  signalConnectors.length = 0;
+  signalUnits.forEach((unit, index) => {
+    rigChain.append(unit);
+    if (index < signalUnits.length - 1) {
+      const wire = connector(index === 0 ? "jack input-source-jack" : "jack");
+      signalConnectors.push(wire);
+      rigChain.append(wire);
+    }
+  });
+};
+renderSignalChain();
 
 const fitRigToViewport = () => {
   rigChain.style.transform = "none";
@@ -771,6 +832,28 @@ const fitRigToViewport = () => {
 requestAnimationFrame(fitRigToViewport);
 new ResizeObserver(fitRigToViewport).observe(rigContainer);
 
+let activeInputSource = microphone;
+const INPUT_SOURCE_STORAGE_KEY = "ai-harness.rigInputSource";
+function toggleInputSource() {
+  if (activeInputSource === microphone && microphoneRecorder?.state === "recording") {
+    appendLog("INPUT", "Stop the microphone recording before switching input sources");
+    return;
+  }
+  const nextSource = activeInputSource === microphone ? midiKeyboard : microphone;
+  if (nextSource === midiKeyboard) signalUnits.splice(0, 2, midiKeyboard);
+  else signalUnits.splice(0, 1, microphone, whisperModel);
+  activeInputSource = nextSource;
+  renderSignalChain();
+  if (activeHarnessStage === "input") setHarnessStage("input");
+  appendLog("INPUT", nextSource === microphone ? "Microphone selected" : "MIDI keyboard selected");
+  const microphoneSelected = nextSource === microphone;
+  audioRecordingIndicator.hidden = !microphoneSelected;
+  promptInput.hidden = microphoneSelected;
+  localStorage.setItem(INPUT_SOURCE_STORAGE_KEY, microphoneSelected ? "microphone" : "keyboard");
+  requestAnimationFrame(fitRigToViewport);
+  nextSource.focus();
+}
+
 const promptInput = element("input", {
   className: "prompt-input",
   attrs: {
@@ -780,6 +863,23 @@ const promptInput = element("input", {
     "aria-label": "User prompt",
     autocomplete: "off",
   },
+});
+promptInput.hidden = true;
+
+const audioWaveBars = Array.from({ length: 28 }, () => element("i", {
+  className: "audio-track-bar",
+  attrs: { "aria-hidden": "true" },
+}));
+const audioTrackStatus = element("strong", { text: "Ready to record" });
+const audioTrackTime = element("time", { text: "00:00.0", attrs: { datetime: "PT0S" } });
+const audioRecordingIndicator = element("button", {
+  className: "audio-recording-track is-ready",
+  attrs: { type: "button", "aria-label": "Start microphone recording" },
+  children: [
+    element("span", { className: "audio-track-record-dot", attrs: { "aria-hidden": "true" } }),
+    element("span", { className: "audio-track-meta", children: [audioTrackStatus, audioTrackTime] }),
+    element("span", { className: "audio-track-waveform", attrs: { "aria-hidden": "true" }, children: audioWaveBars }),
+  ],
 });
 
 const chatOutput = element("div", {
@@ -801,6 +901,7 @@ const promptPanel = element("section", {
   children: [
     element("h2", { text: "CONVERSATION", attrs: { id: "promptWindowTitle" } }),
     chatOutput,
+    audioRecordingIndicator,
     promptInput,
   ],
 });
@@ -857,6 +958,7 @@ let modelSettings = { provider: "openai", model: "gpt-5.1-codex", baseUrl: "", a
 let storedToolPermissions = normalizeToolPermissions();
 let inputTokens = 0;
 let outputTokens = 0;
+let pendingVoicePrompt = "";
 let promptStartedAt = 0;
 let promptTimer = null;
 let workspaceBrowserRoot = null;
@@ -907,8 +1009,6 @@ const updateTokenMeters = () => {
   inputChannel.setTokenCount(inputTokens, relativeMaximum);
   outputChannel.setTokenCount(outputTokens, relativeMaximum);
   runTokensValue.textContent = (inputTokens + outputTokens).toLocaleString();
-  const tokenTotal = inputTokens + outputTokens;
-  setHeaderSignalLevel(tokenTotal ? Math.min(12, 3 + Math.ceil(Math.log10(tokenTotal + 1) * 3)) : (runActive ? 2 : 0));
 };
 
 const addResponseUsage = (response = {}) => {
@@ -1074,10 +1174,13 @@ const setConnectionState = (state, label) => {
 
 const setRunActive = (active) => {
   runActive = active;
-  headerSignalMeter.classList.toggle("is-active", active);
-  if (active && Number(headerSignalMeter.getAttribute("aria-valuenow")) === 0) setHeaderSignalLevel(2);
   promptInput.disabled = active || !socketService?.isOpen;
   if (!active && socketService?.isOpen) promptInput.focus();
+  if (!active && pendingVoicePrompt && socketService?.isOpen) {
+    promptInput.value = pendingVoicePrompt;
+    pendingVoicePrompt = "";
+    requestAnimationFrame(() => submitPrompt());
+  }
 };
 
 const scrollChatToEnd = () => {
@@ -1200,13 +1303,14 @@ const handleSocketMessage = (payload) => {
   }
   if (payload.type === "agent_event") {
     const eventType = payload.event?.type;
-    if (eventType === "start") setHarnessStage("input");
+    if (["composer_start", "composer_complete", "start"].includes(eventType)) setHarnessStage("input");
     else if (["turn", "response"].includes(eventType)) setHarnessStage("model");
     else if (["tool_start", "tool_result"].includes(eventType)) setHarnessStage("tool");
     else if (["mcp_call", "approval_request", "approval_response"].includes(eventType)) setHarnessStage("mcp");
     else if (eventType === "validation") setHarnessStage("validation");
     else if (eventType === "final") setHarnessStage("response");
     if (eventType === "turn") addResponseUsage(payload.event.serverResponse);
+    if (eventType === "composer_complete") addResponseUsage({ usage: payload.event.usage });
     appendLog("HARNESS", describeAgentEvent(payload.event));
     return;
   }
@@ -1283,6 +1387,8 @@ const submitPrompt = () => {
   setHarnessStage("input");
   appendChatMessage("user", prompt);
   appendLog("INPUT", prompt);
+  const bypassedSteps = disabledEffectSteps();
+  if (bypassedSteps.length) appendLog("BYPASS", bypassedSteps.join(", "));
   promptInput.value = "";
   setRunActive(true);
   const sent = socketService.send({
@@ -1292,6 +1398,7 @@ const submitPrompt = () => {
     history,
     images: [],
     workspace: promptWorkspace,
+    disabledSteps: bypassedSteps,
   });
   if (!sent) {
     appendLog("ERROR", "Prompt could not be sent", "log-error");
@@ -1343,15 +1450,189 @@ rewindButton.addEventListener("click", () => {
   promptInput.focus();
 });
 
-recordButton.addEventListener("click", () => {
-  const recording = recordButton.getAttribute("aria-pressed") !== "true";
+let microphoneRecorder = null;
+let microphoneStream = null;
+let microphoneAudioContext = null;
+let microphoneMeterFrame = null;
+let microphoneChunks = [];
+let audioRecordingStartedAt = 0;
+let audioRecordingTimer = null;
+
+const formatRecordingTime = (milliseconds) => {
+  const tenths = Math.floor(milliseconds / 100);
+  const minutes = Math.floor(tenths / 600);
+  const seconds = Math.floor((tenths % 600) / 10);
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${tenths % 10}`;
+};
+
+const setAudioTrackState = (state, label) => {
+  audioRecordingIndicator.className = `audio-recording-track is-${state}`;
+  audioTrackStatus.textContent = label;
+  audioRecordingIndicator.setAttribute("aria-label", label);
+  if (state !== "recording") {
+    window.clearInterval(audioRecordingTimer);
+    audioRecordingTimer = null;
+  }
+};
+
+const startAudioTrackTimer = () => {
+  audioRecordingStartedAt = performance.now();
+  audioTrackTime.textContent = "00:00.0";
+  window.clearInterval(audioRecordingTimer);
+  audioRecordingTimer = window.setInterval(() => {
+    const elapsed = performance.now() - audioRecordingStartedAt;
+    audioTrackTime.textContent = formatRecordingTime(elapsed);
+    audioTrackTime.setAttribute("datetime", `PT${(elapsed / 1000).toFixed(1)}S`);
+  }, 100);
+};
+
+const setRecordingButtonState = (recording, label = recording ? "Stop and save recording" : "Record microphone (hold ⌘1)") => {
   recordButton.setAttribute("aria-pressed", String(recording));
-  recordButton.title = recording ? "Disable recording" : "Enable recording";
-  recordButton.setAttribute("aria-label", recordButton.title);
-  appendLog("RECORD", recording ? "Recording enabled" : "Recording disabled");
+  recordButton.title = label;
+  recordButton.setAttribute("aria-label", label);
+};
+
+const stopMicrophoneMeter = () => {
+  if (microphoneMeterFrame) cancelAnimationFrame(microphoneMeterFrame);
+  microphoneMeterFrame = null;
+  microphoneAudioContext?.close();
+  microphoneAudioContext = null;
+  microphoneStream?.getTracks().forEach((track) => track.stop());
+  microphoneStream = null;
+  headerSignalMeter.classList.remove("is-active");
+  setHeaderSignalLevel(0);
+};
+
+const monitorMicrophoneLevel = (stream) => {
+  headerSignalMeter.classList.add("is-active");
+  setHeaderSignalLevel(0);
+  microphoneAudioContext = new AudioContext();
+  const analyser = microphoneAudioContext.createAnalyser();
+  analyser.fftSize = 256;
+  analyser.smoothingTimeConstant = .72;
+  microphoneAudioContext.createMediaStreamSource(stream).connect(analyser);
+  const samples = new Uint8Array(analyser.fftSize);
+  const update = () => {
+    analyser.getByteTimeDomainData(samples);
+    let energy = 0;
+    for (const sample of samples) energy += ((sample - 128) / 128) ** 2;
+    const rms = Math.sqrt(energy / samples.length);
+    const voiceLevel = rms < .012 ? 0 : Math.ceil((rms - .012) * 45);
+    setHeaderSignalLevel(Math.min(12, voiceLevel));
+    microphoneMeterFrame = requestAnimationFrame(update);
+  };
+  update();
+};
+
+const finishMicrophoneRecording = async () => {
+  const mimeType = microphoneRecorder?.mimeType || "audio/webm";
+  const blob = new Blob(microphoneChunks, { type: mimeType });
+  microphoneRecorder = null;
+  microphoneChunks = [];
+  stopMicrophoneMeter();
+  setRecordingButtonState(false, "Saving microphone recording…");
+  setAudioTrackState("processing", "Saving audio…");
+  recordButton.disabled = true;
+  try {
+    const result = await saveWorkspaceRecording(promptWorkspace, blob);
+    appendLog("RECORD", `Saved ${result.relativePath} (${result.size.toLocaleString()} bytes)`);
+    await refreshWorkspaceTree();
+    setRecordingButtonState(false, "Transcribing microphone recording…");
+    setAudioTrackState("processing", "Transcribing with Whisper…");
+    appendLog("WHISPER", "Transcribing recording with whisper-1…");
+    setHarnessStage("transcription");
+    const transcription = await transcribeWorkspaceRecording(promptWorkspace, result.path);
+    promptInput.value = transcription.text;
+    appendLog("WHISPER", `Transcribed: ${transcription.text}`);
+    if (runActive || !socketService?.isOpen) {
+      pendingVoicePrompt = transcription.text;
+      appendLog("PROMPT", "Voice prompt queued until the harness is ready");
+    } else {
+      submitPrompt();
+    }
+  } catch (error) {
+    setAudioTrackState("error", "Recording failed");
+    appendLog("ERROR", error.message, "log-error");
+  } finally {
+    recordButton.disabled = false;
+    setRecordingButtonState(false);
+    if (!audioRecordingIndicator.classList.contains("is-error")) setAudioTrackState("ready", "Ready to record");
+  }
+};
+
+const startMicrophoneRecording = async () => {
+  if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+    appendLog("ERROR", "Microphone recording is not supported by this browser.", "log-error");
+    return;
+  }
+  try {
+    if (activeInputSource !== microphone) toggleInputSource();
+    microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const preferredTypes = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/mp4"];
+    const mimeType = preferredTypes.find((type) => MediaRecorder.isTypeSupported(type));
+    microphoneChunks = [];
+    microphoneRecorder = new MediaRecorder(microphoneStream, mimeType ? { mimeType } : undefined);
+    microphoneRecorder.addEventListener("dataavailable", (event) => {
+      if (event.data.size) microphoneChunks.push(event.data);
+    });
+    microphoneRecorder.addEventListener("stop", finishMicrophoneRecording, { once: true });
+    microphoneRecorder.start(1000);
+    monitorMicrophoneLevel(microphoneStream);
+    setHarnessStage("capture");
+    setRecordingButtonState(true);
+    setAudioTrackState("recording", "Recording audio");
+    startAudioTrackTimer();
+    appendLog("RECORD", "Microphone recording started");
+  } catch (error) {
+    stopMicrophoneMeter();
+    setRecordingButtonState(false);
+    setAudioTrackState("error", "Microphone unavailable");
+    appendLog("ERROR", `Microphone unavailable: ${error.message}`, "log-error");
+  }
+};
+
+recordButton.addEventListener("click", async () => {
+  if (microphoneRecorder?.state === "recording") {
+    setAudioTrackState("processing", "Finishing recording…");
+    microphoneRecorder.stop();
+    return;
+  }
+  await startMicrophoneRecording();
+});
+
+audioRecordingIndicator.addEventListener("click", () => recordButton.click());
+
+let recordHotkeyHeld = false;
+
+const stopHotkeyRecording = () => {
+  recordHotkeyHeld = false;
+  if (microphoneRecorder?.state !== "recording") return;
+  setAudioTrackState("processing", "Finishing recording…");
+  microphoneRecorder.stop();
+};
+
+window.addEventListener("keydown", async (event) => {
+  if (!event.metaKey || event.code !== "Digit1") return;
+  event.preventDefault();
+  if (event.repeat || recordHotkeyHeld) return;
+  recordHotkeyHeld = true;
+  if (!microphoneRecorder) await startMicrophoneRecording();
+  if (!recordHotkeyHeld) stopHotkeyRecording();
+});
+
+window.addEventListener("keyup", (event) => {
+  if (!recordHotkeyHeld || (event.code !== "Digit1" && event.key !== "Meta")) return;
+  event.preventDefault();
+  stopHotkeyRecording();
+});
+
+window.addEventListener("blur", () => {
+  if (recordHotkeyHeld) stopHotkeyRecording();
 });
 
 const initializePromptStream = async () => {
+  const storedInputSource = localStorage.getItem(INPUT_SOURCE_STORAGE_KEY);
+  if (storedInputSource === "keyboard" && activeInputSource !== midiKeyboard) toggleInputSource();
   setExplorerVisible(localStorage.getItem("ai-harness.rigExplorerVisible") !== "false");
   setHistoryVisible(localStorage.getItem("ai-harness.rigHistoryVisible") !== "false");
   try {
@@ -1366,6 +1647,7 @@ const initializePromptStream = async () => {
       : [createSession("AI Harness Session", health.workspace || ".")];
     activeRigSession = sessions.find((session) => session.id === state.activeSessionId) || sessions[0];
     sessionId = activeRigSession.id;
+    applyConversationEffectStates(sessionId);
     conversation = activeRigSession.messages;
     promptWorkspace = activeRigSession.workspace || health.workspace || ".";
     for (const message of conversation) {

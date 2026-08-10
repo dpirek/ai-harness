@@ -52,7 +52,7 @@ test("SQLite UI state store persists and updates allowed values", () => {
   assert.deepEqual(tables, [
     "events", "layout", "mcp_configuration", "messages", "provider_settings", "providers", "sessions", "system_prompts", "tool_permissions",
   ]);
-  assert.equal(database.prepare("SELECT count(*) AS count FROM system_prompts").get().count, 4);
+  assert.equal(database.prepare("SELECT count(*) AS count FROM system_prompts").get().count, 5);
   const eventColumns = database.prepare("SELECT name FROM pragma_table_info('events')").all().map(({ name }) => name);
   assert.ok(eventColumns.includes("input_prompt"));
   assert.ok(eventColumns.includes("server_response"));

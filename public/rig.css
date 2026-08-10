@@ -362,6 +362,18 @@ body {
   box-shadow: inset 0 0 0 1px #baffc0, 0 0 9px #35e64d;
   filter: brightness(1.12);
 }
+
+.jack.input-source-jack {
+  width: 0;
+  height: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.jack.input-source-jack.signal-processed {
+  background: transparent;
+  box-shadow: none;
+}
 .pedal {
   width: 140px;
   height: 242px;
@@ -423,7 +435,7 @@ body {
 .pedal svg {
   width: 49px;
   height: 49px;
-  margin: 35px 0 7px;
+  margin: 22px 0 5px;
 }
 .pedal b,
 .pedal span {
@@ -431,8 +443,41 @@ body {
   font-weight: 800;
 }
 .pedal span {
-  margin-top: 8px;
+  margin-top: 4px;
 }
+
+.pedal-footswitch {
+  position: absolute;
+  right: 50%;
+  bottom: 0;
+  display: grid;
+  width: 58px;
+  height: 58px;
+  padding: 0;
+  place-items: center;
+  transform: translateX(50%);
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.pedal-footswitch i {
+  width: 34px;
+  height: 34px;
+  border: 2px solid #161819;
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 32%, #f3f4ef, #8d9292 45%, #393d3e 72%);
+  box-shadow: inset 0 0 0 2px #ffffff3d, 0 4px 5px #000b;
+}
+
+.pedal-footswitch:hover i { filter: brightness(1.16); }
+.pedal-footswitch:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+guitar-effect.effect-disabled { filter: grayscale(.78) brightness(.58); }
+guitar-effect.effect-disabled .led { background: #282b2c; box-shadow: none; }
+guitar-effect.effect-disabled .pedal-footswitch { transform: translateX(50%) translateY(2px); }
+guitar-effect.effect-disabled .pedal-footswitch i { box-shadow: inset 0 0 0 2px #0005, 0 1px 2px #000c; }
 .engine {
   width: 420px;
   height: 256px;
@@ -1641,8 +1686,7 @@ rig-microphone.microphone-unit:focus-visible {
 .microphone-shadow { fill: #0009; }
 .microphone-signal-lead {
   fill: #b8b8b8;
-  stroke: #555;
-  stroke-width: 2px;
+  stroke: none;
   shape-rendering: crispEdges;
   transition: fill 180ms ease, stroke 180ms ease, filter 180ms ease;
 }
@@ -1669,8 +1713,109 @@ rig-microphone.microphone-unit:focus-visible {
 .rig-chain rig-microphone.process-active .microphone-signal-lead,
 .rig-chain rig-microphone.process-complete .microphone-signal-lead {
   fill: #35d04b;
-  stroke: #087b1b;
   filter: drop-shadow(0 0 5px #35e64d);
+}
+
+midi-keyboard.midi-keyboard-unit {
+  position: relative;
+  display: block;
+  width: 180px;
+  height: 242px;
+  flex: none;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+midi-keyboard.midi-keyboard-unit:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 5px;
+}
+
+.midi-keyboard-art { display: block; width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 8px 7px #000b); }
+.midi-case-shadow { fill: #050607; }
+.midi-case { fill: #24292b; stroke: #747b7d; stroke-width: 2; }
+.midi-display { fill: #071b22; stroke: #45636b; stroke-width: 1; }
+.midi-display-text { fill: #68d9ff; font: 700 10px ui-monospace, monospace; letter-spacing: .08em; }
+.midi-dial { fill: #101213; stroke: #959b9c; stroke-width: 1.5; }
+.midi-pad { fill: #4b5153; stroke: #a7adae; stroke-width: 1; }
+.midi-white-key { fill: #e7e8e3; stroke: #1a1c1d; stroke-width: 1; }
+.midi-black-key { fill: #090a0b; stroke: #393c3d; stroke-width: 1; }
+.midi-led { fill: #4e5556; stroke: #101112; stroke-width: 1; }
+.midi-signal-lead { fill: #b8b8b8; stroke: none; shape-rendering: crispEdges; }
+
+.rig-chain midi-keyboard.process-active .midi-led,
+.rig-chain midi-keyboard.process-complete .midi-led { fill: #70ff73; filter: drop-shadow(0 0 5px #50f85a); }
+.rig-chain midi-keyboard.process-active .midi-signal-lead,
+.rig-chain midi-keyboard.process-complete .midi-signal-lead { fill: #35d04b; filter: drop-shadow(0 0 5px #35e64d); }
+
+whisper-model.whisper-model {
+  display: block;
+  width: 158px;
+  height: 242px;
+  flex: none;
+  padding: 0;
+}
+
+.whisper-case {
+  display: flex;
+  height: 242px;
+  flex-direction: column;
+  align-items: center;
+  border: 2px solid #687275;
+  border-radius: 9px;
+  background: linear-gradient(145deg, #30383b, #111719 62%, #202729);
+  padding: 12px 11px 14px;
+  box-shadow: inset 0 0 0 3px #0a0d0e, inset 0 2px #ffffff25, 0 9px 12px #000b;
+  color: #dff8ff;
+  text-align: center;
+}
+
+.whisper-header { display: flex; width: 100%; align-items: center; justify-content: space-between; color: #6c929c; font: 700 8px ui-monospace, monospace; letter-spacing: .1em; }
+.whisper-led { width: 9px; height: 9px; border: 1px solid #080a0b; border-radius: 50%; background: #374144; }
+.whisper-display { width: 126px; height: 64px; margin: 17px 0 14px; border: 1px solid #31525d; border-radius: 4px; background: #061014; padding: 5px; }
+.whisper-wave { fill: none; stroke: #55ddff; stroke-width: 2.4; stroke-linejoin: round; }
+.whisper-text-lines { fill: none; stroke: #8cecff; stroke-width: 2; stroke-linecap: round; opacity: .8; }
+.whisper-scan-line { stroke: #baf6ff; stroke-width: 1.5; opacity: 0; filter: drop-shadow(0 0 3px #58dcff); }
+.whisper-case strong { color: #a9efff; font: 800 15px ui-monospace, monospace; text-shadow: 0 0 8px #4bdcff88; }
+.whisper-case small { margin-top: 5px; color: #718d94; font: 700 8px ui-monospace, monospace; letter-spacing: .13em; }
+.rig-chain whisper-model.process-active .whisper-case { border-color: #62dff8; animation: whisper-process 700ms ease-in-out infinite alternate; }
+.rig-chain whisper-model.process-active .whisper-led,
+.rig-chain whisper-model.process-complete .whisper-led { background: #70ff73; box-shadow: 0 0 10px #50f85a; }
+.rig-chain whisper-model.process-active .whisper-wave {
+  stroke-dasharray: 18 7;
+  animation: whisper-wave-travel 550ms linear infinite;
+}
+.rig-chain whisper-model.process-active .whisper-text-lines {
+  animation: whisper-text-pulse 700ms steps(2, end) infinite;
+}
+.rig-chain whisper-model.process-active .whisper-scan-line {
+  opacity: .85;
+  animation: whisper-display-scan 1.15s linear infinite;
+}
+
+@keyframes whisper-process {
+  to { filter: brightness(1.25) drop-shadow(0 0 10px #45dfff99); transform: translateY(-3px); }
+}
+
+@keyframes whisper-wave-travel {
+  to { stroke-dashoffset: -50; }
+}
+
+@keyframes whisper-text-pulse {
+  50% { opacity: .28; }
+}
+
+@keyframes whisper-display-scan {
+  from { transform: translateX(0); }
+  to { transform: translateX(114px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rig-chain whisper-model.process-active .whisper-wave,
+  .rig-chain whisper-model.process-active .whisper-text-lines,
+  .rig-chain whisper-model.process-active .whisper-scan-line {
+    animation: none;
+  }
 }
 
 .engine-slot {
@@ -2349,6 +2494,48 @@ rig-io.io.io-active .signal-fill {
   border-color: #ef5a47;
   box-shadow: inset 0 2px 8px #0008, 0 0 0 2px #ef493733;
 }
+
+.audio-recording-track {
+  display: flex;
+  width: auto;
+  height: 58px;
+  min-height: 58px;
+  align-items: center;
+  gap: 12px;
+  margin: 0 20px 20px;
+  overflow: hidden;
+  border: 1px solid #3c4245;
+  border-radius: 7px;
+  background: linear-gradient(#111719, #090d0e);
+  padding: 8px 13px;
+  color: #e7eae7;
+  text-align: left;
+  box-shadow: inset 0 2px 8px #0008;
+  cursor: pointer;
+}
+
+.audio-recording-track[hidden] { display: none; }
+.audio-track-record-dot { width: 14px; height: 14px; flex: 0 0 14px; border-radius: 50%; background: #6b7071; box-shadow: inset 0 0 0 2px #252829; }
+.audio-track-meta { width: 124px; flex: 0 0 124px; }
+.audio-track-meta strong,
+.audio-track-meta time { display: block; }
+.audio-track-meta strong { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.audio-track-meta time { margin-top: 3px; color: #70dfff; font: 11px ui-monospace, monospace; }
+.audio-track-waveform { display: flex; height: 34px; flex: 1; align-items: center; gap: 3px; overflow: hidden; }
+.audio-track-bar { width: 3px; height: 30%; flex: 1; max-width: 5px; border-radius: 2px; background: #325b62; transform-origin: center; }
+.audio-recording-track.is-recording { border-color: #c84542; }
+.audio-recording-track.is-recording .audio-track-record-dot { background: #ff4b45; box-shadow: 0 0 10px #ff3731; animation: audio-record-dot 700ms ease-in-out infinite alternate; }
+.audio-recording-track.is-recording .audio-track-bar { background: #50d7e9; animation: audio-track-wave 700ms ease-in-out infinite alternate; }
+.audio-recording-track.is-recording .audio-track-bar:nth-child(3n) { animation-delay: -220ms; }
+.audio-recording-track.is-recording .audio-track-bar:nth-child(4n) { animation-delay: -430ms; }
+.audio-recording-track.is-processing .audio-track-record-dot { background: #efb727; box-shadow: 0 0 8px #efb727; }
+.audio-recording-track.is-processing .audio-track-bar { background: #efb727; animation: audio-track-processing 1s ease-in-out infinite; }
+.audio-recording-track.is-error { border-color: #ef4937; color: #ff8176; }
+.audio-recording-track.is-error .audio-track-record-dot { background: #ef4937; }
+
+@keyframes audio-record-dot { to { opacity: .45; } }
+@keyframes audio-track-wave { from { height: 18%; } to { height: 92%; } }
+@keyframes audio-track-processing { 50% { opacity: .25; } }
 
 .log-heading {
   display: flex;
