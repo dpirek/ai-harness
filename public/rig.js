@@ -1,4 +1,5 @@
 import GuitarEffect from "/components/guitar-effect.js";
+import CassettePlayer from "/components/cassette-player.js";
 import ModelEngine from "/components/model-engine.js";
 import Microphone from "/components/microphone.js";
 import MidiKeyboard from "/components/midi-keyboard.js";
@@ -142,14 +143,8 @@ const topbar = document.querySelector(".topbar");
 topbar.append(headerSignalMeter);
 
 const positionHeaderSignalMeter = () => {
-  const topbarBounds = topbar.getBoundingClientRect();
-  const statusBounds = harnessRunDisplay.getBoundingClientRect();
-  const buttonsBounds = toolbarButtonGroup.getBoundingClientRect();
-  const gapStart = statusBounds.right;
-  const gapEnd = buttonsBounds.left;
-  const availableWidth = Math.max(80, gapEnd - gapStart - 24);
-  headerSignalMeter.style.width = `${Math.min(150, availableWidth)}px`;
-  headerSignalMeter.style.left = `${gapStart - topbarBounds.left + ((gapEnd - gapStart) / 2)}px`;
+  headerSignalMeter.style.removeProperty("width");
+  headerSignalMeter.style.removeProperty("left");
 };
 
 requestAnimationFrame(positionHeaderSignalMeter);
@@ -254,7 +249,12 @@ const modelEngine = createEngine();
 const toolOrchestrator = createEffect({ color: "#8a3abd", icon: "#tools", title: "Tool", subtitle: "Orchestrator", step: "tools" });
 const mcpServers = createEffect({ color: "#168b83", icon: "#server-rig", title: "MCP", subtitle: "Servers", step: "mcp" });
 const outputValidator = createEffect({ color: "#dca813", icon: "#clip", title: "Evaluator", subtitle: "Suite", step: "validation" });
-const responseRenderer = createEffect({ color: "#216bbe", icon: "#code", title: "Response", subtitle: "Renderer", step: "response" });
+const responseRenderer = new CassettePlayer({
+  handlers: {
+    click: (event) => openStepPrompt(event.currentTarget),
+    keydown: openPromptWithKeyboard,
+  },
+});
 const outputChannel = createChannel({ title: "OUTPUT", tokenCount: 0, signalLevel: 0, direction: "output", color: "#2479cf" });
 
 const signalUnits = [
@@ -270,7 +270,7 @@ const signalUnits = [
   outputChannel,
 ];
 const signalConnectors = [];
-const guitarEffects = [inputComposer, toolOrchestrator, mcpServers, outputValidator, responseRenderer];
+const guitarEffects = [inputComposer, toolOrchestrator, mcpServers, outputValidator];
 
 const disabledEffectSteps = () => guitarEffects
   .filter((effect) => !effect.enabled)
@@ -737,8 +737,15 @@ saveModelConfigButton.addEventListener("click", async () => {
 
 const visitedHarnessStages = new Set();
 let activeHarnessStage = null;
+let outputGlowTimer = null;
+
+const clearOutputGlowTimer = () => {
+  window.clearTimeout(outputGlowTimer);
+  outputGlowTimer = null;
+};
 
 const setHarnessStage = (stageName) => {
+  if (stageName !== "output") clearOutputGlowTimer();
   if (stageName === "capture" || (stageName === "input" && activeHarnessStage !== "transcription")) visitedHarnessStages.clear();
   if (activeHarnessStage && activeHarnessStage !== stageName) {
     visitedHarnessStages.add(activeHarnessStage);
@@ -769,6 +776,7 @@ const setHarnessStage = (stageName) => {
 };
 
 const setHarnessError = () => {
+  clearOutputGlowTimer();
   signalUnits.forEach((unit) => {
     if (unit.classList.contains("process-active")) unit.classList.add("process-error");
     unit.classList.remove("process-active");
@@ -778,6 +786,7 @@ const setHarnessError = () => {
 };
 
 const resetHarnessDisplay = () => {
+  clearOutputGlowTimer();
   visitedHarnessStages.clear();
   activeHarnessStage = null;
   signalConnectors.forEach((wire) => wire.classList.remove("signal-processed"));
@@ -872,14 +881,30 @@ const audioWaveBars = Array.from({ length: 28 }, () => element("i", {
 }));
 const audioTrackStatus = element("strong", { text: "Ready to record" });
 const audioTrackTime = element("time", { text: "00:00.0", attrs: { datetime: "PT0S" } });
-const audioRecordingIndicator = element("button", {
+const audioTrackRecordButton = element("button", {
+  className: "audio-track-record-button",
+  text: "●",
+  attrs: {
+    type: "button",
+    title: "Start microphone recording",
+    "aria-label": "Start microphone recording",
+    "aria-pressed": "false",
+  },
+});
+const audioRecordingIndicator = element("div", {
   className: "audio-recording-track is-ready",
-  attrs: { type: "button", "aria-label": "Start microphone recording" },
+  attrs: { role: "group", "aria-label": "Microphone recording controls" },
   children: [
     element("span", { className: "audio-track-record-dot", attrs: { "aria-hidden": "true" } }),
     element("span", { className: "audio-track-meta", children: [audioTrackStatus, audioTrackTime] }),
     element("span", { className: "audio-track-waveform", attrs: { "aria-hidden": "true" }, children: audioWaveBars }),
+    audioTrackRecordButton,
   ],
+});
+
+const promptFooter = element("footer", {
+  className: "prompt-footer",
+  children: [audioRecordingIndicator, promptInput],
 });
 
 const chatOutput = element("div", {
@@ -901,8 +926,7 @@ const promptPanel = element("section", {
   children: [
     element("h2", { text: "CONVERSATION", attrs: { id: "promptWindowTitle" } }),
     chatOutput,
-    audioRecordingIndicator,
-    promptInput,
+    promptFooter,
   ],
 });
 
@@ -960,9 +984,9 @@ const setWorkspaceHeight = (requestedHeight, persist = true) => {
   const app = document.querySelector(".app");
   const headerHeight = document.querySelector(".topbar").getBoundingClientRect().height;
   const bottomPadding = parseFloat(getComputedStyle(app).paddingBottom) || 0;
-  const maxHeight = Math.max(220, app.clientHeight - headerHeight - bottomPadding - 126 - 44);
+  const maxHeight = Math.max(220, app.clientHeight - headerHeight - bottomPadding - 126);
   const height = Math.round(Math.max(220, Math.min(maxHeight, requestedHeight)));
-  app.style.setProperty("--rig-workspace-height", `${height + 44}px`);
+  app.style.setProperty("--rig-workspace-height", `${height}px`);
   app.classList.add("workspace-resized");
   workspaceResizeHandle.setAttribute("aria-valuenow", String(height));
   workspaceResizeHandle.setAttribute("aria-valuemin", "220");
@@ -1069,6 +1093,7 @@ const updateTokenMeters = () => {
   const relativeMaximum = Math.max(1, inputTokens, outputTokens);
   inputChannel.setTokenCount(inputTokens, relativeMaximum);
   outputChannel.setTokenCount(outputTokens, relativeMaximum);
+  responseRenderer.setTokenCount(outputTokens);
   runTokensValue.textContent = (inputTokens + outputTokens).toLocaleString();
 };
 
@@ -1399,6 +1424,14 @@ const handleSocketMessage = (payload) => {
   if (payload.type === "done") {
     finishStream(payload.text || streamingText);
     setHarnessStage("output");
+    clearOutputGlowTimer();
+    outputGlowTimer = window.setTimeout(() => {
+      outputGlowTimer = null;
+      outputChannel.classList.remove("process-active");
+      outputChannel.classList.add("process-complete");
+      outputChannel.removeAttribute("aria-current");
+      if (activeHarnessStage === "output") activeHarnessStage = null;
+    }, 5000);
     appendLog("DONE", "Run completed");
     return;
   }
@@ -1541,7 +1574,7 @@ const formatRecordingTime = (milliseconds) => {
 const setAudioTrackState = (state, label) => {
   audioRecordingIndicator.className = `audio-recording-track is-${state}`;
   audioTrackStatus.textContent = label;
-  audioRecordingIndicator.setAttribute("aria-label", label);
+  audioTrackRecordButton.disabled = state === "processing";
   if (state !== "recording") {
     window.clearInterval(audioRecordingTimer);
     audioRecordingTimer = null;
@@ -1563,6 +1596,10 @@ const setRecordingButtonState = (recording, label = recording ? "Stop and save r
   recordButton.setAttribute("aria-pressed", String(recording));
   recordButton.title = label;
   recordButton.setAttribute("aria-label", label);
+  audioTrackRecordButton.setAttribute("aria-pressed", String(recording));
+  audioTrackRecordButton.textContent = recording ? "■" : "●";
+  audioTrackRecordButton.title = recording ? "Stop and save recording" : "Start microphone recording";
+  audioTrackRecordButton.setAttribute("aria-label", audioTrackRecordButton.title);
 };
 
 const stopMicrophoneMeter = () => {
@@ -1673,7 +1710,7 @@ recordButton.addEventListener("click", async () => {
   await startMicrophoneRecording();
 });
 
-audioRecordingIndicator.addEventListener("click", () => recordButton.click());
+audioTrackRecordButton.addEventListener("click", () => recordButton.click());
 
 let recordHotkeyHeld = false;
 
