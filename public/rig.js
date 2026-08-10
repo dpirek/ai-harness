@@ -131,11 +131,11 @@ const historyToggle = element("button", {
     "aria-pressed": "true",
   },
 });
-const gearButton = document.querySelector(".topbar .gear");
+const logToggle = document.querySelector(".topbar .log-toggle");
 const toolbarButtonGroup = element("div", {
   className: "toolbar-button-group",
   attrs: { role: "group", "aria-label": "Workspace controls" },
-  children: [explorerToggle, historyToggle, gearButton],
+  children: [explorerToggle, historyToggle, logToggle],
 });
 document.querySelector(".topbar .toolbar").append(toolbarButtonGroup);
 const topbar = document.querySelector(".topbar");
@@ -935,13 +935,74 @@ const logPanel = element("aside", {
   ],
 });
 
+const workspaceResizeHandle = element("div", {
+  className: "rig-workspace-resize-handle",
+  attrs: {
+    role: "separator",
+    tabindex: "0",
+    "aria-label": "Resize conversation panel",
+    "aria-orientation": "horizontal",
+    title: "Drag to resize Conversation and Live Log",
+  },
+  children: [element("span", { attrs: { "aria-hidden": "true" } })],
+});
+
 const workspace = element("section", {
   className: "rig-workspace",
   attrs: { "aria-label": "Prompt and harness log" },
-  children: [promptPanel, logPanel],
+  children: [workspaceResizeHandle, promptPanel, logPanel],
 });
 
 rigContainer.insertAdjacentElement("afterend", workspace);
+
+const WORKSPACE_HEIGHT_STORAGE_KEY = "ai-harness.rigWorkspaceHeight";
+const setWorkspaceHeight = (requestedHeight, persist = true) => {
+  const app = document.querySelector(".app");
+  const headerHeight = document.querySelector(".topbar").getBoundingClientRect().height;
+  const bottomPadding = parseFloat(getComputedStyle(app).paddingBottom) || 0;
+  const maxHeight = Math.max(220, app.clientHeight - headerHeight - bottomPadding - 126 - 44);
+  const height = Math.round(Math.max(220, Math.min(maxHeight, requestedHeight)));
+  app.style.setProperty("--rig-workspace-height", `${height + 44}px`);
+  app.classList.add("workspace-resized");
+  workspaceResizeHandle.setAttribute("aria-valuenow", String(height));
+  workspaceResizeHandle.setAttribute("aria-valuemin", "220");
+  workspaceResizeHandle.setAttribute("aria-valuemax", String(Math.round(maxHeight)));
+  if (persist) localStorage.setItem(WORKSPACE_HEIGHT_STORAGE_KEY, String(height));
+  requestAnimationFrame(fitRigToViewport);
+};
+
+workspaceResizeHandle.addEventListener("pointerdown", (event) => {
+  if (event.button !== 0) return;
+  const startY = event.clientY;
+  const startHeight = workspace.getBoundingClientRect().height;
+  workspaceResizeHandle.setPointerCapture(event.pointerId);
+  document.body.classList.add("resizing-rig-workspace");
+  const resize = (moveEvent) => setWorkspaceHeight(startHeight + startY - moveEvent.clientY, false);
+  const finish = (upEvent) => {
+    workspaceResizeHandle.removeEventListener("pointermove", resize);
+    workspaceResizeHandle.removeEventListener("pointerup", finish);
+    workspaceResizeHandle.removeEventListener("pointercancel", finish);
+    document.body.classList.remove("resizing-rig-workspace");
+    if (workspaceResizeHandle.hasPointerCapture(upEvent.pointerId)) workspaceResizeHandle.releasePointerCapture(upEvent.pointerId);
+    setWorkspaceHeight(workspace.getBoundingClientRect().height);
+  };
+  workspaceResizeHandle.addEventListener("pointermove", resize);
+  workspaceResizeHandle.addEventListener("pointerup", finish);
+  workspaceResizeHandle.addEventListener("pointercancel", finish);
+});
+
+workspaceResizeHandle.addEventListener("keydown", (event) => {
+  if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+  event.preventDefault();
+  const delta = event.key === "ArrowUp" ? 20 : -20;
+  setWorkspaceHeight(workspace.getBoundingClientRect().height + delta);
+});
+
+window.addEventListener("resize", () => {
+  if (document.querySelector(".app").classList.contains("workspace-resized")) {
+    setWorkspaceHeight(workspace.getBoundingClientRect().height, false);
+  }
+});
 
 let sessionId = crypto.randomUUID();
 let conversation = [];
@@ -1164,6 +1225,18 @@ const setHistoryVisible = (visible) => {
 
 historyToggle.addEventListener("click", () => {
   setHistoryVisible(document.querySelector(".app").classList.contains("history-hidden"));
+});
+
+const setLogVisible = (visible) => {
+  document.querySelector(".app").classList.toggle("log-hidden", !visible);
+  logToggle.setAttribute("aria-pressed", String(visible));
+  logToggle.title = visible ? "Hide live log" : "Show live log";
+  logToggle.setAttribute("aria-label", logToggle.title);
+  localStorage.setItem("ai-harness.rigLogVisible", String(visible));
+};
+
+logToggle.addEventListener("click", () => {
+  setLogVisible(document.querySelector(".app").classList.contains("log-hidden"));
 });
 
 const setConnectionState = (state, label) => {
@@ -1635,6 +1708,11 @@ const initializePromptStream = async () => {
   if (storedInputSource === "keyboard" && activeInputSource !== midiKeyboard) toggleInputSource();
   setExplorerVisible(localStorage.getItem("ai-harness.rigExplorerVisible") !== "false");
   setHistoryVisible(localStorage.getItem("ai-harness.rigHistoryVisible") !== "false");
+  setLogVisible(localStorage.getItem("ai-harness.rigLogVisible") !== "false");
+  const storedWorkspaceHeight = Number(localStorage.getItem(WORKSPACE_HEIGHT_STORAGE_KEY));
+  if (Number.isFinite(storedWorkspaceHeight) && storedWorkspaceHeight > 0) {
+    setWorkspaceHeight(storedWorkspaceHeight, false);
+  }
   try {
     const [health, state] = await Promise.all([loadHealth(), loadUiState()]);
     sessions = Array.isArray(state.sessions) && state.sessions.length

@@ -912,6 +912,12 @@ guitar-effect.effect-disabled .pedal-footswitch i { box-shadow: inset 0 0 0 2px 
   height: 22px;
 }
 
+.header-log-icon {
+  display: block;
+  width: 22px;
+  height: 22px;
+}
+
 .toolbar-button-group {
   display: flex;
   overflow: hidden;
@@ -1444,7 +1450,7 @@ body {
   min-height: 0;
   height: 100%;
   overflow: hidden;
-  padding: clamp(20px, 4vh, 44px) 28px clamp(12px, 2vh, 28px);
+  padding: clamp(9.8px, 1.96vh, 21.56px) 28px clamp(5.88px, .98vh, 13.72px);
 }
 
 .rig-chain-viewport {
@@ -1609,6 +1615,10 @@ body {
   grid-template-rows: clamp(180px, 31vh, 330px) minmax(180px, 1fr);
   padding-top: var(--rig-header-height);
   padding-bottom: 22px;
+}
+
+.app.workspace-resized {
+  grid-template-rows: minmax(126px, 1fr) var(--rig-workspace-height);
 }
 .topbar {
   position: fixed;
@@ -2322,6 +2332,7 @@ rig-io.io.io-active .signal-fill {
 }
 
 .rig-workspace {
+  position: relative;
   display: grid;
   min-width: 0;
   min-height: 0;
@@ -2329,7 +2340,55 @@ rig-io.io.io-active .signal-fill {
   gap: 14px;
   margin: 22px;
   padding: 0;
-  overflow: hidden;
+  overflow: visible;
+}
+
+.rig-workspace-resize-handle {
+  position: absolute;
+  z-index: 8;
+  top: -11px;
+  right: 0;
+  left: 0;
+  display: grid;
+  height: 22px;
+  place-items: center;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.rig-workspace-resize-handle span {
+  width: 96px;
+  height: 5px;
+  border-radius: 999px;
+  background: #596164;
+  box-shadow: 0 1px #000, 0 0 0 1px #151819;
+  transition: width 140ms ease, height 140ms ease, background 140ms ease, box-shadow 140ms ease;
+}
+
+.rig-workspace-resize-handle:hover span,
+.rig-workspace-resize-handle:focus-visible span,
+.resizing-rig-workspace .rig-workspace-resize-handle span {
+  width: min(280px, 38vw);
+  height: 7px;
+  background: #91e8ff;
+  box-shadow: 0 0 4px #c8f5ff, 0 0 14px #43c9f0, 0 0 24px #258bb388;
+}
+
+.rig-workspace-resize-handle:focus-visible {
+  outline: none;
+}
+
+.resizing-rig-workspace {
+  cursor: ns-resize;
+  user-select: none;
+}
+
+.app.log-hidden .rig-workspace {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.app.log-hidden .log-window {
+  display: none;
 }
 
 .rig-workspace-panel {
