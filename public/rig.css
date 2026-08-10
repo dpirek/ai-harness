@@ -395,7 +395,11 @@ body {
 }
 .jack {
   width: 32px;
+  min-width: 24px;
+  max-width: 140px;
   height: 7px;
+  flex: 1 1 32px;
+  align-self: center;
   background: #b8b8b8;
   box-shadow: inset 0 0 0 2px #555;
   transition: background 180ms ease, box-shadow 180ms ease, filter 180ms ease;
@@ -408,7 +412,10 @@ body {
 
 .jack.input-source-jack {
   width: 0;
+  min-width: 0;
+  max-width: 0;
   height: 0;
+  flex: none;
   background: transparent;
   box-shadow: none;
 }
@@ -1955,7 +1962,8 @@ body {
   left: 0;
   display: flex;
   align-items: center;
-  width: max-content;
+  width: 100%;
+  min-width: max-content;
   padding: 0 0 14px;
   transform-origin: top left;
   will-change: transform;
@@ -2994,7 +3002,7 @@ rig-io.io.io-active .signal-fill {
 }
 
 .rig-chat-message-agent .rig-chat-message-body {
-  box-shadow: inset 3px 0 #48d65e;
+  box-shadow: none;
 }
 
 .rig-chat-message-streaming .rig-chat-message-body::after {

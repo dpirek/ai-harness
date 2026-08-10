@@ -648,6 +648,38 @@ async function createAgentSession(socket, sessionId, streamStates, root, pending
   });
 }
 
+function createExecutionControl({ onPaused = () => {}, onResumed = () => {} } = {}) {
+  let state = "running";
+  let waiters = [];
+  return {
+    get state() {
+      return state;
+    },
+    requestPause() {
+      if (state !== "running") return false;
+      state = "pause_requested";
+      return true;
+    },
+    resume() {
+      if (state === "running") return false;
+      state = "running";
+      const pending = waiters;
+      waiters = [];
+      pending.forEach((resolve) => resolve());
+      onResumed();
+      return true;
+    },
+    async waitIfPaused() {
+      if (state !== "pause_requested" && state !== "paused") return;
+      if (state === "pause_requested") {
+        state = "paused";
+        onPaused();
+      }
+      await new Promise((resolve) => waiters.push(resolve));
+    },
+  };
+}
+
 function handleWebSocket(socket, req) {
   const key = req.headers["sec-websocket-key"];
   if (!key) {
@@ -672,6 +704,7 @@ function handleWebSocket(socket, req) {
   const streamStates = new Map();
   const pendingApprovals = new Map();
   let running = false;
+  let currentRun = null;
 
   socket.on("data", async (chunk) => {
     try {
@@ -724,6 +757,18 @@ function handleWebSocket(socket, req) {
               approved,
             });
           }
+          continue;
+        }
+        if (payload.type === "pause") {
+          if (!running || !currentRun || currentRun.sessionId !== sessionId) continue;
+          if (currentRun.controller.requestPause()) {
+            sendJson(socket, { type: "run_pause_requested", sessionId });
+          }
+          continue;
+        }
+        if (payload.type === "resume") {
+          if (!running || !currentRun || currentRun.sessionId !== sessionId) continue;
+          currentRun.controller.resume();
           continue;
         }
         if (payload.type === "provider_settings") {
@@ -783,6 +828,13 @@ function handleWebSocket(socket, req) {
         }
 
         running = true;
+        currentRun = {
+          sessionId,
+          controller: createExecutionControl({
+            onPaused: () => sendJson(socket, { type: "run_paused", sessionId }),
+            onResumed: () => sendJson(socket, { type: "run_resumed", sessionId }),
+          }),
+        };
         try {
           const root = await resolveWorkspace(payload.workspace);
           const allowedSteps = new Set(["composer", "tools", "mcp", "validation", "response"]);
@@ -803,7 +855,7 @@ function handleWebSocket(socket, req) {
           const agent = await entry.promise;
           const composedPrompt = disabledSteps.includes("composer")
             ? payload.prompt
-            : await agent.refinePrompt(payload.prompt);
+            : await agent.refinePrompt(payload.prompt, { executionControl: currentRun.controller });
           const prompt = hasExistingAgent
             ? composedPrompt
             : promptWithHistory(composedPrompt, payload.history);
@@ -811,7 +863,7 @@ function handleWebSocket(socket, req) {
           const text = await agent.run({
             text: prompt,
             images: requestImages(payload),
-          }, { disabledSteps });
+          }, { disabledSteps, executionControl: currentRun.controller });
           sendJson(socket, { type: "done", text, sessionId });
           streamStates.delete(sessionId);
         } catch (error) {
@@ -819,6 +871,7 @@ function handleWebSocket(socket, req) {
           streamStates.delete(sessionId);
         } finally {
           running = false;
+          currentRun = null;
         }
       }
     } catch (error) {

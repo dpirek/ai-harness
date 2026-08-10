@@ -108,7 +108,7 @@ const transportButton = (className, icon, label) => element("button", {
   text: icon,
   attrs: { type: "button", title: label, "aria-label": label },
 });
-const rewindButton = transportButton("transport-rewind", "◀◀", "Reset conversation");
+const rewindButton = transportButton("transport-rewind", "◀◀", "Clear conversation history");
 const stopButton = transportButton("transport-stop", "■", "Stop current run");
 const playButton = transportButton("transport-play", "▶", "Send prompt");
 const recordButton = transportButton("transport-record", "●", "Record microphone (hold ⌘1)");
@@ -1054,6 +1054,8 @@ let activeRigSession = null;
 let sessionSaveQueue = Promise.resolve();
 let socketService;
 let runActive = false;
+let runPaused = false;
+let runPauseRequested = false;
 let streamingText = "";
 let streamingBody = null;
 let reconnectTimer = null;
@@ -1070,6 +1072,31 @@ let workspacePickerRoot = null;
 let workspacePickerParent = null;
 let pendingWorkspacePath = null;
 let editingFilePath = null;
+
+const updateTransportButtonState = () => {
+  if (runActive) {
+    const continueMode = runPaused || runPauseRequested;
+    playButton.title = continueMode ? "Continue current run" : "Run in progress";
+    playButton.setAttribute("aria-label", playButton.title);
+    playButton.disabled = !continueMode;
+    stopButton.title = runPaused ? "Run paused" : runPauseRequested ? "Pausing current run…" : "Pause current run";
+    stopButton.setAttribute("aria-label", stopButton.title);
+    stopButton.disabled = runPaused || runPauseRequested;
+    return;
+  }
+  playButton.title = "Send prompt";
+  playButton.setAttribute("aria-label", playButton.title);
+  playButton.disabled = false;
+  stopButton.title = "Pause current run";
+  stopButton.setAttribute("aria-label", stopButton.title);
+  stopButton.disabled = true;
+};
+
+const setRunPausedState = ({ paused = false, pauseRequested = false } = {}) => {
+  runPaused = paused;
+  runPauseRequested = pauseRequested;
+  updateTransportButtonState();
+};
 
 const persistRigSessions = () => {
   if (!activeRigSession) return;
@@ -1132,7 +1159,7 @@ const appendLog = (type, message, detailOrClassName = undefined, className = "")
     ? detailOrClassName
     : className;
   return appendEvent(logOutput, {
-    title: `[${type}] ${message}`,
+    title: message,
     detail,
     timestamp: Date.now(),
     className: itemClassName,
@@ -1294,10 +1321,12 @@ const setConnectionState = (state, label) => {
   liveStatus.className = `log-live log-${state}`;
   liveStatus.textContent = `● ${label}`;
   promptInput.disabled = state !== "online" || runActive;
+  if (state !== "online") setRunPausedState();
 };
 
 const setRunActive = (active) => {
   runActive = active;
+  if (!active) setRunPausedState();
   promptInput.disabled = active || !socketService?.isOpen;
   if (!active && socketService?.isOpen) promptInput.focus();
   if (!active && pendingVoicePrompt && socketService?.isOpen) {
@@ -1531,6 +1560,21 @@ const handleSocketMessage = (payload) => {
     appendLog("DONE", "Run completed", payload);
     return;
   }
+  if (payload.type === "run_pause_requested") {
+    setRunPausedState({ pauseRequested: true });
+    appendLog("STOP", "Pause requested");
+    return;
+  }
+  if (payload.type === "run_paused") {
+    setRunPausedState({ paused: true });
+    appendLog("STOP", "Run paused");
+    return;
+  }
+  if (payload.type === "run_resumed") {
+    setRunPausedState();
+    appendLog("PLAY", "Run resumed");
+    return;
+  }
   if (payload.type === "error") {
     setHarnessError();
     appendLog("ERROR", payload.error || "Harness error", payload, "log-error");
@@ -1610,6 +1654,15 @@ const submitPrompt = () => {
   return sent;
 };
 
+const resumePromptRun = () => {
+  if (!runActive || (!runPaused && !runPauseRequested)) return false;
+  const sent = socketService?.send({ type: "resume", sessionId });
+  if (sent) {
+    appendLog("PLAY", "Continue requested");
+  }
+  return sent;
+};
+
 promptInput.disabled = true;
 promptInput.addEventListener("keydown", (event) => {
   if (event.key !== "Enter") return;
@@ -1617,24 +1670,38 @@ promptInput.addEventListener("keydown", (event) => {
   submitPrompt();
 });
 
-playButton.addEventListener("click", submitPrompt);
+playButton.addEventListener("click", () => {
+  if (runActive) {
+    resumePromptRun();
+    return;
+  }
+  submitPrompt();
+});
 
 stopButton.addEventListener("click", () => {
-  if (!runActive) return;
-  appendLog("STOP", "Run stopped by user");
-  if (streamingText) finishStream(streamingText);
-  else {
-    stopPromptTimer();
-    setRunActive(false);
+  if (!runActive || runPaused || runPauseRequested) return;
+  const sent = socketService?.send({ type: "pause", sessionId });
+  if (sent) {
+    setRunPausedState({ pauseRequested: true });
   }
-  socketService?.socket?.close(1000, "Stopped by user");
 });
 
 rewindButton.addEventListener("click", () => {
   if (runActive) return;
-  conversation.length = 0;
-  if (activeRigSession) activeRigSession.title = "New chat";
+  const nextSession = createSession("New chat", promptWorkspace);
+  nextSession.messages = [];
+  nextSession.events = [];
+  nextSession.workspace = promptWorkspace;
+  nextSession.updatedAt = Date.now();
+  sessions = [nextSession];
+  activeRigSession = nextSession;
+  sessionId = nextSession.id;
+  conversation = nextSession.messages;
+  effectStatesByConversation = {};
+  localStorage.setItem(EFFECT_STATES_STORAGE_KEY, JSON.stringify(effectStatesByConversation));
+  applyConversationEffectStates(sessionId);
   renderConversationMessages();
+  renderConversationList();
   runPromptsValue.textContent = "0";
   runTokensValue.textContent = "0";
   inputTokens = 0;
@@ -1643,7 +1710,7 @@ rewindButton.addEventListener("click", () => {
   resetHarnessDisplay();
   socketService?.send({ type: "reset", sessionId });
   persistRigSessions();
-  appendLog("RESET", "Conversation rewound");
+  appendLog("RESET", "Conversation history cleared");
   promptInput.focus();
 });
 
@@ -1886,3 +1953,4 @@ const initializePromptStream = async () => {
 };
 
 initializePromptStream();
+updateTransportButtonState();
