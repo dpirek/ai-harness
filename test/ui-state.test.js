@@ -16,6 +16,14 @@ test("SQLite UI state store persists and updates allowed values", () => {
     workspace: "/workspace",
     messages: [{ role: "user", text: "Hello" }],
     events: [{ title: "Run started", timestamp: 456 }],
+    tokenHistory: [{
+      id: "prompt-1",
+      prompt: "Hello",
+      inputTokens: 12,
+      outputTokens: 34,
+      totalTokens: 46,
+      timestamp: 789,
+    }],
     updatedAt: 123,
   };
 
@@ -50,7 +58,7 @@ test("SQLite UI state store persists and updates allowed values", () => {
     "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name",
   ).all().map(({ name }) => name);
   assert.deepEqual(tables, [
-    "events", "layout", "mcp_configuration", "messages", "provider_settings", "providers", "sessions", "system_prompts", "tool_permissions",
+    "events", "layout", "mcp_configuration", "messages", "provider_settings", "providers", "sessions", "system_prompts", "token_usage", "tool_permissions",
   ]);
   assert.equal(database.prepare("SELECT count(*) AS count FROM system_prompts").get().count, 5);
   const eventColumns = database.prepare("SELECT name FROM pragma_table_info('events')").all().map(({ name }) => name);
@@ -112,6 +120,7 @@ test("SQLite UI state store migrates JSON session columns into child tables", ()
     id: "old", title: "Old chat", workspace: "/old",
     messages: [{ role: "agent", text: "Saved" }],
     events: [{ title: "Tool completed", detail: { ok: true }, timestamp: 99 }],
+    tokenHistory: [],
     updatedAt: 88,
   }]);
   store.close();

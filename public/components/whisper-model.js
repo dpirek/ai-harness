@@ -1,12 +1,25 @@
 import BaseComponent from "./base-component.js";
 
 class WhisperModel extends BaseComponent {
+  constructor({ handlers = {} } = {}) {
+    super();
+    this.props = { handlers };
+  }
+
   connectedCallback() {
     if (this.childElementCount) return;
     this.classList.add("unit", "whisper-model");
-    this.setAttribute("role", "status");
     this.setAttribute("aria-label", "Whisper speech to text model");
+    if (typeof this.props.handlers.click === "function") {
+      this.setAttribute("role", "button");
+      this.tabIndex = 0;
+    } else {
+      this.setAttribute("role", "status");
+    }
     this.render();
+    for (const [eventName, handler] of Object.entries(this.props.handlers)) {
+      if (typeof handler === "function") this.addEventListener(eventName, handler);
+    }
   }
 
   render() {

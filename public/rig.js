@@ -267,8 +267,13 @@ const midiKeyboard = new MidiKeyboard({
     keydown: toggleInputSourceWithKeyboard,
   },
 });
-const whisperModel = new WhisperModel();
-const inputChannel = new RigIO({ title: "INPUT", tokenCount: 0, signalLevel: 0, direction: "input", color: "#e84431" });
+const whisperModel = new WhisperModel({
+  handlers: {
+    click: (event) => openStepPrompt(event.currentTarget),
+    keydown: openPromptWithKeyboard,
+  },
+});
+const inputChannel = createChannel({ title: "INPUT", tokenCount: 0, signalLevel: 0, direction: "input", color: "#e84431" });
 const inputComposer = createEffect({ color: "#e84431", icon: "wave", title: "Input", subtitle: "Composer", step: "composer" });
 const modelEngine = createEngine();
 const toolOrchestrator = createEffect({ color: "#8a3abd", icon: "tools", title: "Tool", subtitle: "Orchestrator", step: "tools" });
@@ -280,7 +285,7 @@ const responseRenderer = new CassettePlayer({
     keydown: openPromptWithKeyboard,
   },
 });
-const outputChannel = new RigIO({ title: "OUTPUT", tokenCount: 0, signalLevel: 0, direction: "output", color: "#2479cf" });
+const outputChannel = createChannel({ title: "OUTPUT", tokenCount: 0, signalLevel: 0, direction: "output", color: "#2479cf" });
 
 const signalUnits = [
   microphone,
@@ -337,12 +342,77 @@ const harnessStages = [
 const stepPromptConfig = new Map([
   [microphone, { title: "Microphone Input", keys: ["agent_instructions"] }],
   [midiKeyboard, { title: "MIDI Keyboard Input", keys: ["agent_instructions"] }],
+  [whisperModel, {
+    title: "Whisper Transcription",
+    keys: [],
+    renderInfo: () => [
+      element("article", { className: "step-info-panel", children: [
+        element("div", { className: "step-info-panel-header", children: [
+          element("h3", { text: "Model information" }),
+          element("span", { className: "step-info-panel-badge", text: "Transcription" }),
+        ] }),
+        element("div", { className: "step-info-panel-body", children: [
+          element("dl", { className: "step-info-grid", children: [
+            element("div", { className: "step-info-row", children: [
+              element("dt", { text: "Model" }),
+              element("dd", { text: "whisper-1" }),
+            ] }),
+            element("div", { className: "step-info-row", children: [
+              element("dt", { text: "Endpoint" }),
+              element("dd", { children: [element("code", { text: "POST /v1/audio/transcriptions" })] }),
+            ] }),
+          ] }),
+          element("div", { className: "step-link-pills", children: [
+            element("a", {
+              className: "step-link-pill",
+              text: "Whisper model page",
+              attrs: {
+                href: "https://developers.openai.com/api/docs/models/whisper-1",
+                target: "_blank",
+                rel: "noreferrer",
+              },
+            }),
+            element("a", {
+              className: "step-link-pill",
+              text: "Audio API reference",
+              attrs: {
+                href: "https://developers.openai.com/api/reference/audio",
+                target: "_blank",
+                rel: "noreferrer",
+              },
+            }),
+          ] }),
+        ] }),
+      ] }),
+      element("section", { className: "step-modal-callout", children: [
+        element("strong", { text: "No transcription prompt configured" }),
+        element("p", { text: "This harness currently sends recordings to whisper-1 without a prompt." }),
+      ] }),
+    ],
+    suppressEmptyPromptMessage: true,
+  }],
+  [inputChannel, {
+    title: "Input Token History",
+    modalTitle: "Input Token History",
+    modalDescription: "Per-prompt token usage for the active conversation. This history is persisted in SQLite.",
+    keys: [],
+    renderInfo: () => createTokenHistorySections("input"),
+    suppressEmptyPromptMessage: true,
+  }],
   [inputComposer, { title: "Input Composer", keys: ["prompt_refinement"] }],
-  [modelEngine, { title: "Model Engine", keys: ["agent_instructions", "workspace_context"] }],
+  [modelEngine, { title: "Model Engine", keys: ["agent_instructions"] }],
   [toolOrchestrator, { title: "Tool Orchestrator", keys: ["tool_contract"], showToolSettings: true }],
   [mcpServers, { title: "MCP Servers", keys: ["tool_contract"], showMcpSettings: true }],
   [outputValidator, { title: "Output Validation", keys: ["validation_reminder"] }],
-  [responseRenderer, { title: "Final Response", keys: ["agent_instructions"] }],
+  [responseRenderer, { title: "Tape Player", keys: ["workspace_context"] }],
+  [outputChannel, {
+    title: "Output Token History",
+    modalTitle: "Output Token History",
+    modalDescription: "Per-prompt token usage for the active conversation. This history is persisted in SQLite.",
+    keys: [],
+    renderInfo: () => createTokenHistorySections("output"),
+    suppressEmptyPromptMessage: true,
+  }],
 ]);
 
 const promptModalTitle = element("h2", { text: "System Prompts", attrs: { id: "stepPromptModalTitle" } });
@@ -558,9 +628,18 @@ const createMcpSettings = () => {
 
 const renderStepPrompts = (config) => {
   promptModalContent.replaceChildren();
+  if (config.showToolSettings) promptModalContent.append(createToolSettings());
+  if (config.showMcpSettings) promptModalContent.append(createMcpSettings());
+  if (typeof config.renderInfo === "function") {
+    const infoSections = config.renderInfo();
+    const items = Array.isArray(infoSections) ? infoSections : [infoSections];
+    promptModalContent.append(...items.filter(Boolean));
+  }
+  let renderedPromptCount = 0;
   for (const key of config.keys) {
     const prompt = systemPromptsByKey?.get(key);
     if (!prompt) continue;
+    renderedPromptCount += 1;
     const editor = element("textarea", {
       className: "step-prompt-editor",
       attrs: { spellcheck: "false", "aria-label": `Edit ${prompt.title}` },
@@ -597,23 +676,29 @@ const renderStepPrompts = (config) => {
       element("footer", { className: "step-prompt-actions", children: [status, saveButton] }),
     ] }));
   }
-  if (!promptModalContent.childElementCount) {
-    promptModalContent.append(element("p", { className: "step-prompt-modal-status", text: "No prompt is configured for this step." }));
+  if (renderedPromptCount === 0 && !config.suppressEmptyPromptMessage) {
+    promptModalContent.append(element("p", {
+      className: "step-prompt-modal-status",
+      text: config.emptyPromptText || "No prompt is configured for this step.",
+    }));
   }
-  if (config.showToolSettings) promptModalContent.append(createToolSettings());
-  if (config.showMcpSettings) promptModalContent.append(createMcpSettings());
 };
 
 async function openStepPrompt(unit) {
   const config = stepPromptConfig.get(unit);
   if (!config) return;
-  promptModalTitle.textContent = `${config.title} Prompts`;
-  promptModalStep.textContent = "System instructions used by this harness step. Changes apply to subsequent runs.";
+  promptModalTitle.textContent = config.modalTitle || `${config.title} Prompts`;
+  promptModalStep.textContent = config.modalDescription || "System instructions used by this harness step. Changes apply to subsequent runs.";
   promptModalContent.replaceChildren(element("p", {
     className: "step-prompt-modal-status",
     text: "Loading system prompts…",
   }));
   if (!stepPromptModal.open) stepPromptModal.showModal();
+
+  if (!(config.keys?.length) && !config.showToolSettings && !config.showMcpSettings) {
+    renderStepPrompts(config);
+    return;
+  }
 
   try {
     systemPromptsRequest ||= loadSystemPrompts().then((prompts) => {
@@ -1065,6 +1150,7 @@ let modelSettings = { provider: "openai", model: "gpt-5.1-codex", baseUrl: "", a
 let storedToolPermissions = normalizeToolPermissions();
 let inputTokens = 0;
 let outputTokens = 0;
+let currentPromptTokenEntryId = null;
 let pendingVoicePrompt = "";
 let promptStartedAt = 0;
 let promptTimer = null;
@@ -1104,9 +1190,175 @@ const setRunPausedState = ({ paused = false, pauseRequested = false } = {}) => {
   updateTransportButtonState();
 };
 
+const normalizeTokenHistoryEntry = (entry = {}, index = 0) => {
+  const inputCount = Math.max(0, Number(entry.inputTokens) || 0);
+  const outputCount = Math.max(0, Number(entry.outputTokens) || 0);
+  return {
+    id: String(entry.id || `token-${index}`),
+    prompt: String(entry.prompt || ""),
+    inputTokens: inputCount,
+    outputTokens: outputCount,
+    totalTokens: Math.max(0, Number(entry.totalTokens) || (inputCount + outputCount)),
+    timestamp: Number(entry.timestamp) || Date.now(),
+  };
+};
+
+const ensureActiveSessionTokenHistory = () => {
+  if (!activeRigSession) return [];
+  if (!Array.isArray(activeRigSession.tokenHistory)) activeRigSession.tokenHistory = [];
+  return activeRigSession.tokenHistory;
+};
+
+const currentSessionTokenHistory = () => (
+  Array.isArray(activeRigSession?.tokenHistory)
+    ? activeRigSession.tokenHistory.map((entry, index) => normalizeTokenHistoryEntry(entry, index))
+    : []
+);
+
+const getTokenHistoryTotals = (history = currentSessionTokenHistory()) => history.reduce((totals, entry) => ({
+  prompts: totals.prompts + 1,
+  inputTokens: totals.inputTokens + entry.inputTokens,
+  outputTokens: totals.outputTokens + entry.outputTokens,
+  totalTokens: totals.totalTokens + entry.totalTokens,
+}), {
+  prompts: 0,
+  inputTokens: 0,
+  outputTokens: 0,
+  totalTokens: 0,
+});
+
+const formatTokenCount = (value) => Math.max(0, Number(value) || 0).toLocaleString();
+
+function createTokenHistorySections(focus = "all") {
+  const history = currentSessionTokenHistory();
+  const totals = getTokenHistoryTotals(history);
+  const summary = element("section", {
+    className: "token-history-panel",
+    children: [
+      element("div", { className: "token-history-panel-header", children: [
+        element("div", { children: [
+          element("h3", { text: "Conversation totals" }),
+          element("p", { text: "Aggregated usage for the active conversation." }),
+        ] }),
+        element("span", {
+          className: `token-history-focus-badge token-history-focus-${focus}`,
+          text: focus === "input" ? "Viewing input" : focus === "output" ? "Viewing output" : "Viewing totals",
+        }),
+      ] }),
+      element("div", { className: "token-history-summary", children: [
+        element("article", { className: "token-history-summary-card", children: [
+          element("small", { text: "Prompts" }),
+          element("strong", { text: String(totals.prompts) }),
+        ] }),
+        element("article", { className: "token-history-summary-card", children: [
+          element("small", { text: "Input tokens" }),
+          element("strong", { text: formatTokenCount(totals.inputTokens) }),
+        ] }),
+        element("article", { className: "token-history-summary-card", children: [
+          element("small", { text: "Output tokens" }),
+          element("strong", { text: formatTokenCount(totals.outputTokens) }),
+        ] }),
+        element("article", { className: "token-history-summary-card", children: [
+          element("small", { text: "Conversation total" }),
+          element("strong", { text: formatTokenCount(totals.totalTokens) }),
+        ] }),
+      ] }),
+    ],
+  });
+
+  if (!history.length) {
+    return [
+      summary,
+      element("section", { className: "step-modal-callout step-modal-callout-empty", children: [
+        element("strong", { text: "No token history recorded yet" }),
+        element("p", { text: "Send a prompt in the current conversation to start collecting persisted token usage." }),
+      ] }),
+    ];
+  }
+
+  const table = element("table", {
+    className: `token-history-table${focus === "input" ? " token-history-focus-input" : focus === "output" ? " token-history-focus-output" : ""}`,
+    children: [
+      element("thead", { children: [element("tr", { children: [
+        element("th", { text: "#" }),
+        element("th", { text: "Prompt" }),
+        element("th", { text: "Input" }),
+        element("th", { text: "Output" }),
+        element("th", { text: "Total" }),
+      ] })] }),
+      element("tbody", { children: history.map((entry, index) => element("tr", {
+        children: [
+          element("td", { text: String(index + 1) }),
+          element("td", { children: [element("code", { text: entry.prompt || "—" })] }),
+          element("td", { text: formatTokenCount(entry.inputTokens) }),
+          element("td", { text: formatTokenCount(entry.outputTokens) }),
+          element("td", { text: formatTokenCount(entry.totalTokens) }),
+        ],
+      })) }),
+    ],
+  });
+
+  return [
+    summary,
+    element("section", { className: "token-history-table-panel", children: [
+      element("div", { className: "token-history-table-toolbar", children: [
+        element("div", { children: [
+          element("h3", { text: "Per-prompt history" }),
+          element("p", { text: "Each submitted prompt is stored with its input, output, and total token usage." }),
+        ] }),
+      ] }),
+      element("div", { className: "token-history-table-wrap", children: [table] }),
+    ] }),
+  ];
+}
+
+const startPromptTokenHistoryEntry = (prompt) => {
+  const history = ensureActiveSessionTokenHistory();
+  const entry = normalizeTokenHistoryEntry({
+    id: crypto.randomUUID(),
+    prompt,
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    timestamp: Date.now(),
+  }, history.length);
+  history.push(entry);
+  currentPromptTokenEntryId = entry.id;
+};
+
+const getCurrentPromptTokenEntry = () => (
+  ensureActiveSessionTokenHistory().find((entry) => entry.id === currentPromptTokenEntryId) || null
+);
+
+const updateCurrentPromptTokenHistory = ({ inputDelta = 0, outputDelta = 0 } = {}) => {
+  const entry = getCurrentPromptTokenEntry();
+  if (!entry) return;
+  entry.inputTokens = Math.max(0, Number(entry.inputTokens) || 0) + Math.max(0, Number(inputDelta) || 0);
+  entry.outputTokens = Math.max(0, Number(entry.outputTokens) || 0) + Math.max(0, Number(outputDelta) || 0);
+  entry.totalTokens = entry.inputTokens + entry.outputTokens;
+  entry.timestamp = Date.now();
+};
+
+const finalizeCurrentPromptTokenHistory = () => {
+  const entry = getCurrentPromptTokenEntry();
+  if (entry) {
+    entry.totalTokens = Math.max(0, Number(entry.inputTokens) || 0) + Math.max(0, Number(entry.outputTokens) || 0);
+    entry.timestamp = Date.now();
+  }
+  currentPromptTokenEntryId = null;
+};
+
+const discardCurrentPromptTokenHistory = () => {
+  if (!activeRigSession || !currentPromptTokenEntryId) return;
+  activeRigSession.tokenHistory = ensureActiveSessionTokenHistory()
+    .filter((entry) => entry.id !== currentPromptTokenEntryId);
+  currentPromptTokenEntryId = null;
+};
+
 const persistRigSessions = () => {
   if (!activeRigSession) return;
   activeRigSession.messages = conversation;
+  activeRigSession.tokenHistory = currentSessionTokenHistory();
   activeRigSession.workspace = promptWorkspace;
   activeRigSession.updatedAt = Date.now();
   renderConversationList();
@@ -1152,9 +1404,13 @@ const updateTokenMeters = () => {
 
 const addResponseUsage = (response = {}) => {
   const usage = response.usage || {};
-  inputTokens += Number(usage.input_tokens ?? usage.prompt_tokens ?? 0) || 0;
-  outputTokens += Number(usage.output_tokens ?? usage.completion_tokens ?? 0) || 0;
+  const inputDelta = Number(usage.input_tokens ?? usage.prompt_tokens ?? 0) || 0;
+  const outputDelta = Number(usage.output_tokens ?? usage.completion_tokens ?? 0) || 0;
+  inputTokens += inputDelta;
+  outputTokens += outputDelta;
+  updateCurrentPromptTokenHistory({ inputDelta, outputDelta });
   updateTokenMeters();
+  persistRigSessions();
 };
 
 const appendLog = (type, message, detailOrClassName = undefined, className = "") => {
@@ -1416,6 +1672,10 @@ function switchRigSession(nextSessionId) {
   sessionId = nextSession.id;
   applyConversationEffectStates(sessionId);
   conversation = Array.isArray(nextSession.messages) ? nextSession.messages : [];
+  activeRigSession.tokenHistory = Array.isArray(nextSession.tokenHistory)
+    ? nextSession.tokenHistory.map((entry, index) => normalizeTokenHistoryEntry(entry, index))
+    : [];
+  currentPromptTokenEntryId = null;
   promptWorkspace = nextSession.workspace || promptWorkspace;
   workspaceInput.value = promptWorkspace;
   filesWorkspaceLabel.textContent = promptWorkspace;
@@ -1434,6 +1694,7 @@ function createRigConversation() {
   const nextSession = createSession("New chat", promptWorkspace);
   nextSession.messages = [];
   nextSession.events = [];
+  nextSession.tokenHistory = [];
   nextSession.workspace = promptWorkspace;
   nextSession.updatedAt = Date.now();
   sessions = [nextSession, ...sessions];
@@ -1441,6 +1702,7 @@ function createRigConversation() {
   sessionId = nextSession.id;
   applyConversationEffectStates(sessionId);
   conversation = nextSession.messages;
+  currentPromptTokenEntryId = null;
   runPromptsValue.textContent = "0";
   runTokensValue.textContent = "0";
   inputTokens = 0;
@@ -1485,10 +1747,11 @@ const finishStream = (text = "") => {
     const message = streamingBody.closest(".rig-chat-message");
     message?.classList.remove("rig-chat-message-streaming");
   }
+  finalizeCurrentPromptTokenHistory();
   if (finalText) {
     conversation.push({ role: "agent", text: finalText });
-    persistRigSessions();
   }
+  persistRigSessions();
   streamingBody = null;
   streamingText = "";
   scrollChatToEnd();
@@ -1591,6 +1854,7 @@ const handleSocketMessage = (payload) => {
     appendLog("ERROR", payload.error || "Harness error", payload, "log-error");
     appendChatMessage("agent", payload.error || "Harness error", "rig-chat-message-error");
     conversation.push({ role: "agent", text: payload.error || "Harness error" });
+    finalizeCurrentPromptTokenHistory();
     persistRigSessions();
     streamingBody = null;
     streamingText = "";
@@ -1634,6 +1898,7 @@ const submitPrompt = () => {
   outputTokens = 0;
   updateTokenMeters();
   conversation.push({ role: "user", text: prompt });
+  startPromptTokenHistoryEntry(prompt);
   if (activeRigSession && (!activeRigSession.title || activeRigSession.title === "New chat" || activeRigSession.title === "AI Harness Session")) {
     activeRigSession.title = titleFromPrompt(prompt);
   }
@@ -1658,7 +1923,9 @@ const submitPrompt = () => {
     disabledSteps: bypassedSteps,
   });
   if (!sent) {
+    discardCurrentPromptTokenHistory();
     appendLog("ERROR", "Prompt could not be sent", "log-error");
+    persistRigSessions();
     stopPromptTimer();
     setRunActive(false);
   }
@@ -1702,12 +1969,14 @@ rewindButton.addEventListener("click", () => {
   const nextSession = createSession("New chat", promptWorkspace);
   nextSession.messages = [];
   nextSession.events = [];
+  nextSession.tokenHistory = [];
   nextSession.workspace = promptWorkspace;
   nextSession.updatedAt = Date.now();
   sessions = [nextSession];
   activeRigSession = nextSession;
   sessionId = nextSession.id;
   conversation = nextSession.messages;
+  currentPromptTokenEntryId = null;
   effectStatesByConversation = {};
   localStorage.setItem(EFFECT_STATES_STORAGE_KEY, JSON.stringify(effectStatesByConversation));
   applyConversationEffectStates(sessionId);
@@ -1928,6 +2197,9 @@ const initializePromptStream = async () => {
         ...session,
         messages: Array.isArray(session.messages) ? session.messages : [],
         events: Array.isArray(session.events) ? session.events : [],
+        tokenHistory: Array.isArray(session.tokenHistory)
+          ? session.tokenHistory.map((entry, index) => normalizeTokenHistoryEntry(entry, index))
+          : [],
         workspace: session.workspace || health.workspace || ".",
       }))
       : [createSession("AI Harness Session", health.workspace || ".")];
