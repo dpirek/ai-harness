@@ -3625,6 +3625,173 @@ rig-io.io.io-active .signal-fill {
   white-space: pre-wrap;
 }
 
+.log-output .eventActions {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 10px 27px;
+}
+
+.log-output .eventDetailButton {
+  border: 1px solid #30343b;
+  border-radius: 999px;
+  background: #14171b;
+  color: #d8dde6;
+  padding: 6px 10px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .04em;
+}
+
+.log-output .eventDetailButton:hover,
+.log-output .eventDetailButton:focus-visible {
+  border-color: #4c6f8a;
+  background: #1a2229;
+  color: #fff;
+  outline: none;
+}
+
+.eventPromptModal {
+  width: min(920px, calc(100vw - 32px));
+  max-height: min(84vh, 860px);
+  border: 1px solid #30343b;
+  border-radius: 14px;
+  background: #101316;
+  color: #ececec;
+  padding: 0;
+  box-shadow: 0 28px 90px #000d, inset 0 1px #ffffff12;
+}
+
+.eventPromptModal::backdrop {
+  background: #050708c7;
+  backdrop-filter: blur(4px);
+}
+
+.eventPromptModalPanel {
+  display: flex;
+  max-height: min(84vh, 860px);
+  flex-direction: column;
+  padding: 24px;
+}
+
+.eventPromptModalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid #262a31;
+  padding-bottom: 16px;
+}
+
+.eventPromptModalHeader h2,
+.eventPromptModalSection h3,
+.eventPromptModalBody p {
+  margin: 0;
+}
+
+.eventPromptModalHeader h2 {
+  color: #f3f3f3;
+  font-size: 22px;
+}
+
+.eventPromptModalClose {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  color: #fff;
+  font-size: 28px;
+  line-height: 1;
+}
+
+.eventPromptModalClose:hover,
+.eventPromptModalClose:focus-visible {
+  background: #24282e;
+  outline: none;
+}
+
+.eventPromptModalContent {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  padding-top: 18px;
+}
+
+.eventPromptModalSection {
+  overflow: hidden;
+  border: 1px solid #2d3239;
+  border-radius: 12px;
+  background: #15191e;
+}
+
+.eventPromptModalSection h3 {
+  border-bottom: 1px solid #2b3037;
+  background: #1b2026;
+  padding: 12px 14px;
+  color: #eef1f5;
+  font-size: 13px;
+}
+
+.eventPromptModalBody {
+  padding: 14px;
+}
+
+.eventPromptModalBody > * + * {
+  margin-top: 12px;
+}
+
+.eventPromptModalBody p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: #d5dae3;
+  line-height: 1.55;
+}
+
+.eventPromptModalBody .codeBlock {
+  overflow: hidden;
+  border: 1px solid #30343b;
+  border-radius: 8px;
+  background: #090b0d;
+}
+
+.eventPromptModalBody .codeLanguage {
+  border-bottom: 1px solid #292d34;
+  background: #191c22;
+  padding: 6px 10px;
+  color: #9299a6;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.eventPromptModalBody .codeBlock pre {
+  max-height: none;
+  margin: 0;
+  padding: 12px;
+  overflow-x: auto;
+  background: transparent;
+}
+
+.eventPromptModalBody .codeBlock code {
+  color: #d7dae0;
+  white-space: pre;
+}
+
+.eventPromptModalBody .syntax-comment { color: #7f8996; font-style: italic; }
+.eventPromptModalBody .syntax-keyword { color: #c792ea; }
+.eventPromptModalBody .syntax-string { color: #c3e88d; }
+.eventPromptModalBody .syntax-number { color: #f78c6c; }
+.eventPromptModalBody .syntax-tag { color: #f07178; }
+.eventPromptModalBody .syntax-property { color: #82aaff; }
+.eventPromptModalBody .syntax-operator { color: #89ddff; }
+
+@media (max-width: 760px) {
+  .eventPromptModalPanel {
+    padding: 20px;
+  }
+}
+
 .log-output .log-error .eventTitle,
 .log-output .log-error time,
 .log-output .log-error .eventChevron {
