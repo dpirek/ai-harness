@@ -3339,6 +3339,7 @@ rig-io.io.io-active .signal-fill {
   border: 1px solid #30343b;
   border-radius: 8px;
   background: #090b0d;
+  margin-bottom: 10px;
 }
 
 .rig-chat-message-body .codeLanguage {
