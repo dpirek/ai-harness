@@ -1563,7 +1563,6 @@ workspace-panel.rig-file-explorer {
 .conversation-history-item.active {
   border-color: #4ba7c9;
   background: linear-gradient(145deg, #182126, #11181c);
-  box-shadow: inset 3px 0 #4ba7c9;
 }
 
 .conversation-history-item strong,
