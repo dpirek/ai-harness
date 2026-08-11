@@ -5,7 +5,6 @@ import fs from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadEnv } from "./lib/env.js";
 import { createModelClient } from "./lib/openai.js";
 import { CodingAgent } from "./lib/agent.js";
 import { createTools } from "./lib/tools.js";
@@ -19,15 +18,16 @@ const databaseDir = path.join(process.cwd(), "db");
 const uiStateDatabasePath = path.join(databaseDir, "ui-state.sqlite");
 const legacyUiStateDatabasePath = path.join(process.cwd(), ".ai-harness/ui-state.sqlite");
 
-loadEnv(path.join(__dirname, ".env"));
 const port = Number(process.env.PORT || 3000);
 await fs.mkdir(databaseDir, { recursive: true });
 let databaseExists = true;
+
 try {
   await fs.access(uiStateDatabasePath);
 } catch {
   databaseExists = false;
 }
+
 if (!databaseExists) {
   for (const suffix of ["", "-wal", "-shm"]) {
     try {
@@ -38,6 +38,7 @@ if (!databaseExists) {
   }
 }
 const uiStateStore = createUiStateStore(uiStateDatabasePath);
+
 if (uiStateStore.getMcpConfig() === undefined) {
   try {
     uiStateStore.setMcpConfig(await fs.readFile(configPath, "utf8"));
