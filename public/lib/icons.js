@@ -77,6 +77,25 @@ const SVG_CONFIGS = {
       }],
     ],
   },
+  presets: {
+    viewBox: "0 0 24 24",
+    nodes: [
+      ["path", {
+        d: "M7 4.5h10a1.5 1.5 0 0 1 1.5 1.5v13l-6.5-3-6.5 3V6A1.5 1.5 0 0 1 7 4.5Z",
+        fill: "none",
+        stroke: "currentColor",
+        "stroke-width": "2",
+        "stroke-linejoin": "round",
+      }],
+      ["path", {
+        d: "M9 9h6M9 12h4",
+        fill: "none",
+        stroke: "currentColor",
+        "stroke-width": "2",
+        "stroke-linecap": "round",
+      }],
+    ],
+  },
 };
 
 function createSvgNode(tag, attrs = {}) {
@@ -132,6 +151,10 @@ export function harnessWaveIcon(className = "") {
 
 export function liveLogIcon(className = "header-log-icon") {
   return createConfiguredIcon("live_log", className);
+}
+
+export function presetsIcon(className = "header-log-icon") {
+  return createConfiguredIcon("presets", className);
 }
 
 export function harnessEffectIcon(name, className = "") {

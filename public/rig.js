@@ -10,7 +10,7 @@ import "/components/modals/file-editor-modal.js";
 import "/components/modals/workspace-picker-modal.js";
 import { appendEvent, describeAgentEvent } from "/lib/event-rendering.js";
 import { codeLanguageLabel, renderFilePreview } from "/lib/file-utils.js";
-import { harnessWaveIcon, liveLogIcon, workspaceExplorerIcon } from "/lib/icons.js";
+import { harnessWaveIcon, liveLogIcon, presetsIcon, workspaceExplorerIcon } from "/lib/icons.js";
 import { appendMessageText } from "/lib/message-rendering.js";
 import { mcpBlocks, quoteToml, setToolBlockEnabled } from "/lib/mcp-config.js";
 import { normalizeToolPermissions } from "/lib/settings.js";
@@ -54,11 +54,14 @@ const app = document.querySelector(".app");
 const EXPLORER_VISIBLE_STORAGE_KEY = "ai-harness.rigExplorerVisible";
 const HISTORY_VISIBLE_STORAGE_KEY = "ai-harness.rigHistoryVisible";
 const LOG_VISIBLE_STORAGE_KEY = "ai-harness.rigLogVisible";
+const PRESETS_VISIBLE_STORAGE_KEY = "ai-harness.rigPresetsVisible";
 const initialExplorerVisible = localStorage.getItem(EXPLORER_VISIBLE_STORAGE_KEY) === "true";
 const initialHistoryVisible = localStorage.getItem(HISTORY_VISIBLE_STORAGE_KEY) === "true";
+const initialPresetsVisible = localStorage.getItem(PRESETS_VISIBLE_STORAGE_KEY) === "true";
 app.classList.add("ui-initializing");
 app.classList.toggle("explorer-hidden", !initialExplorerVisible);
 app.classList.toggle("history-hidden", !initialHistoryVisible);
+app.classList.toggle("presets-hidden", !initialPresetsVisible);
 
 const runTimeValue = element("strong", { text: "00:00.0" });
 const runModelValue = element("strong", { text: "—" });
@@ -144,12 +147,22 @@ const historyToggle = element("button", {
     "aria-pressed": String(initialHistoryVisible),
   },
 });
+const presetsToggle = element("button", {
+  className: "explorer-toggle presets-toggle",
+  attrs: {
+    type: "button",
+    title: initialPresetsVisible ? "Hide presets" : "Show presets",
+    "aria-label": initialPresetsVisible ? "Hide presets" : "Show presets",
+    "aria-pressed": String(initialPresetsVisible),
+  },
+  children: [presetsIcon()],
+});
 const logToggle = document.querySelector(".topbar .log-toggle");
 logToggle.replaceChildren(liveLogIcon());
 const toolbarButtonGroup = element("div", {
   className: "toolbar-button-group",
   attrs: { role: "group", "aria-label": "Workspace controls" },
-  children: [explorerToggle, historyToggle, logToggle],
+  children: [explorerToggle, historyToggle, presetsToggle, logToggle],
 });
 document.querySelector(".topbar .toolbar").append(toolbarButtonGroup);
 const topbar = document.querySelector(".topbar");
@@ -193,6 +206,21 @@ const conversationHistory = element("aside", {
   ],
 });
 app.append(conversationHistory);
+const presetsList = element("div", { className: "presets-list" });
+const presetsPanel = element("aside", {
+  className: "rig-presets",
+  attrs: { "aria-labelledby": "presetsWindowTitle" },
+  children: [
+    element("header", { children: [
+      element("div", { children: [
+        element("h2", { text: "Presets", attrs: { id: "presetsWindowTitle" } }),
+        element("span", { text: "Prompt shortcuts" }),
+      ] }),
+    ] }),
+    presetsList,
+  ],
+});
+app.append(presetsPanel);
 const workspacePickerModal = document.createElement("workspace-picker-modal");
 const fileEditorModal = document.createElement("file-editor-modal");
 document.body.append(workspacePickerModal, fileEditorModal);
@@ -414,6 +442,36 @@ const stepPromptConfig = new Map([
     suppressEmptyPromptMessage: true,
   }],
 ]);
+
+const presetShortcuts = [
+  { title: "Whisper", description: "Transcription model and API details", unit: whisperModel },
+  { title: "Input Composer", description: "Prompt refinement preset", unit: inputComposer },
+  { title: "Model Engine", description: "Agent instructions and model behavior", unit: modelEngine },
+  { title: "Tool Orchestrator", description: "Tool routing contract and permissions", unit: toolOrchestrator },
+  { title: "MCP Servers", description: "MCP presets and server configuration", unit: mcpServers },
+  { title: "Output Validation", description: "Validation reminder and checks", unit: outputValidator },
+  { title: "Tape Player", description: "Workspace context preset", unit: responseRenderer },
+];
+
+const renderPresetShortcuts = () => {
+  presetsList.replaceChildren(...presetShortcuts.map((preset) => {
+    const button = element("button", {
+      className: "preset-shortcut",
+      attrs: {
+        type: "button",
+        title: preset.title,
+        "aria-label": preset.title,
+      },
+      children: [
+        element("strong", { text: preset.title }),
+        element("span", { text: preset.description }),
+      ],
+    });
+    button.addEventListener("click", () => openStepPrompt(preset.unit));
+    return button;
+  }));
+};
+renderPresetShortcuts();
 
 const promptModalTitle = element("h2", { text: "System Prompts", attrs: { id: "stepPromptModalTitle" } });
 const promptModalStep = element("p", { className: "step-prompt-modal-step" });
@@ -1584,6 +1642,19 @@ logToggle.addEventListener("click", () => {
   setLogVisible(app.classList.contains("log-hidden"));
 });
 
+const setPresetsVisible = (visible) => {
+  app.classList.toggle("presets-hidden", !visible);
+  presetsToggle.setAttribute("aria-pressed", String(visible));
+  presetsToggle.title = visible ? "Hide presets" : "Show presets";
+  presetsToggle.setAttribute("aria-label", presetsToggle.title);
+  localStorage.setItem(PRESETS_VISIBLE_STORAGE_KEY, String(visible));
+  requestAnimationFrame(fitRigToViewport);
+};
+
+presetsToggle.addEventListener("click", () => {
+  setPresetsVisible(app.classList.contains("presets-hidden"));
+});
+
 const setConnectionState = (state, label) => {
   liveStatus.className = `log-live log-${state}`;
   liveStatus.textContent = `● ${label}`;
@@ -2185,6 +2256,7 @@ const initializePromptStream = async () => {
   setExplorerVisible(localStorage.getItem(EXPLORER_VISIBLE_STORAGE_KEY) === "true");
   setHistoryVisible(localStorage.getItem(HISTORY_VISIBLE_STORAGE_KEY) === "true");
   setLogVisible(localStorage.getItem(LOG_VISIBLE_STORAGE_KEY) !== "false");
+  setPresetsVisible(localStorage.getItem(PRESETS_VISIBLE_STORAGE_KEY) === "true");
   const storedWorkspaceHeight = Number(localStorage.getItem(WORKSPACE_HEIGHT_STORAGE_KEY));
   if (Number.isFinite(storedWorkspaceHeight) && storedWorkspaceHeight > 0) {
     setWorkspaceHeight(storedWorkspaceHeight, false);

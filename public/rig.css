@@ -1221,10 +1221,20 @@ cassette-player.cassette-player-unit:focus-visible {
   --rig-explorer-width: 300px;
   --rig-history-width: 260px;
   --rig-log-width: 280px;
+  --rig-presets-width: 250px;
 }
 
 .app {
-  padding-right: calc(var(--rig-explorer-width) + var(--rig-history-width) + var(--rig-log-width));
+  --rig-explorer-visible-width: var(--rig-explorer-width);
+  --rig-history-visible-width: var(--rig-history-width);
+  --rig-log-visible-width: var(--rig-log-width);
+  --rig-presets-visible-width: var(--rig-presets-width);
+  padding-right: calc(
+    var(--rig-explorer-visible-width) +
+    var(--rig-history-visible-width) +
+    var(--rig-log-visible-width) +
+    var(--rig-presets-visible-width)
+  );
   transition: padding-right 180ms ease;
 }
 
@@ -1233,31 +1243,19 @@ cassette-player.cassette-player-unit:focus-visible {
 }
 
 .app.explorer-hidden {
-  padding-right: calc(var(--rig-history-width) + var(--rig-log-width));
+  --rig-explorer-visible-width: 0px;
 }
 
 .app.history-hidden {
-  padding-right: calc(var(--rig-explorer-width) + var(--rig-log-width));
+  --rig-history-visible-width: 0px;
 }
 
 .app.log-hidden {
-  padding-right: calc(var(--rig-explorer-width) + var(--rig-history-width));
+  --rig-log-visible-width: 0px;
 }
 
-.app.explorer-hidden.history-hidden {
-  padding-right: var(--rig-log-width);
-}
-
-.app.explorer-hidden.log-hidden {
-  padding-right: var(--rig-history-width);
-}
-
-.app.history-hidden.log-hidden {
-  padding-right: var(--rig-explorer-width);
-}
-
-.app.explorer-hidden.history-hidden.log-hidden {
-  padding-right: 0;
+.app.presets-hidden {
+  --rig-presets-visible-width: 0px;
 }
 
 .explorer-toggle {
@@ -1343,7 +1341,8 @@ workspace-panel.rig-file-explorer {
 
 .app.ui-initializing workspace-panel.rig-file-explorer,
 .app.ui-initializing .rig-conversation-history,
-.app.ui-initializing .rig-live-log {
+.app.ui-initializing .rig-live-log,
+.app.ui-initializing .rig-presets {
   transition: none;
 }
 
@@ -1357,7 +1356,7 @@ workspace-panel.rig-file-explorer {
   position: fixed;
   z-index: 89;
   top: var(--rig-header-height);
-  right: var(--rig-explorer-width);
+  right: var(--rig-explorer-visible-width);
   bottom: 0;
   display: flex;
   width: var(--rig-history-width);
@@ -1367,10 +1366,6 @@ workspace-panel.rig-file-explorer {
   background: linear-gradient(145deg, #191d1f, #0e1112);
   box-shadow: -7px 0 18px #0006;
   transition: right 180ms ease, transform 180ms ease, visibility 180ms ease;
-}
-
-.app.explorer-hidden .rig-conversation-history {
-  right: 0;
 }
 
 .app.history-hidden .rig-conversation-history {
@@ -1383,7 +1378,7 @@ workspace-panel.rig-file-explorer {
   position: fixed;
   z-index: 88;
   top: var(--rig-header-height);
-  right: calc(var(--rig-explorer-width) + var(--rig-history-width));
+  right: calc(var(--rig-explorer-visible-width) + var(--rig-history-visible-width));
   bottom: 0;
   display: flex;
   width: var(--rig-log-width);
@@ -1395,19 +1390,33 @@ workspace-panel.rig-file-explorer {
   transition: right 180ms ease, transform 180ms ease, visibility 180ms ease;
 }
 
-.app.explorer-hidden .rig-live-log {
-  right: var(--rig-history-width);
-}
-
-.app.history-hidden .rig-live-log {
-  right: var(--rig-explorer-width);
-}
-
-.app.explorer-hidden.history-hidden .rig-live-log {
-  right: 0;
-}
-
 .app.log-hidden .rig-live-log {
+  visibility: hidden;
+  transform: translateX(100%);
+  pointer-events: none;
+}
+
+.rig-presets {
+  position: fixed;
+  z-index: 87;
+  top: var(--rig-header-height);
+  right: calc(
+    var(--rig-explorer-visible-width) +
+    var(--rig-history-visible-width) +
+    var(--rig-log-visible-width)
+  );
+  bottom: 0;
+  display: flex;
+  width: var(--rig-presets-width);
+  min-height: 0;
+  flex-direction: column;
+  border-left: 1px solid #3c4245;
+  background: linear-gradient(145deg, #171b1d, #0b0f10);
+  box-shadow: -7px 0 18px #0006;
+  transition: right 180ms ease, transform 180ms ease, visibility 180ms ease;
+}
+
+.app.presets-hidden .rig-presets {
   visibility: hidden;
   transform: translateX(100%);
   pointer-events: none;
@@ -1464,7 +1473,8 @@ workspace-panel.rig-file-explorer {
 }
 
 .rig-conversation-history header span,
-.rig-live-log header span {
+.rig-live-log header span,
+.rig-presets header span {
   display: block;
   margin-top: 3px;
   color: #92989a;
@@ -1472,6 +1482,14 @@ workspace-panel.rig-file-explorer {
 }
 
 .rig-live-log > header {
+  display: flex;
+  min-height: 65px;
+  align-items: center;
+  border-bottom: 1px solid #343a3d;
+  padding: 12px 14px;
+}
+
+.rig-presets > header {
   display: flex;
   min-height: 65px;
   align-items: center;
@@ -1488,9 +1506,22 @@ workspace-panel.rig-file-explorer {
   gap: 12px;
 }
 
+.rig-presets > header > div {
+  width: 100%;
+  min-width: 0;
+}
+
 .rig-live-log h2 {
   margin: 0;
   flex: 1 1 auto;
+  min-width: 0;
+  font-size: 15px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.rig-presets h2 {
+  margin: 0;
   min-width: 0;
   font-size: 15px;
   letter-spacing: .04em;
@@ -1531,6 +1562,50 @@ workspace-panel.rig-file-explorer {
   min-height: 0;
   overflow-y: auto;
   padding: 9px;
+}
+
+.presets-list {
+  display: grid;
+  flex: 1;
+  min-height: 0;
+  gap: 8px;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.preset-shortcut {
+  display: block;
+  width: 100%;
+  border: 1px solid #32393b;
+  border-radius: 9px;
+  background: #121618;
+  color: #eef1ee;
+  padding: 11px 12px;
+  text-align: left;
+}
+
+.preset-shortcut:hover,
+.preset-shortcut:focus-visible {
+  border-color: #5da5c8;
+  background: #182126;
+  outline: none;
+}
+
+.preset-shortcut strong,
+.preset-shortcut span {
+  display: block;
+}
+
+.preset-shortcut strong {
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.preset-shortcut span {
+  margin-top: 4px;
+  color: #97a2a8;
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .conversation-history-empty {
@@ -1961,6 +2036,10 @@ workspace-panel.rig-file-explorer {
 
   .rig-live-log {
     width: min(var(--rig-log-width), 82vw);
+  }
+
+  .rig-presets {
+    width: min(var(--rig-presets-width), 78vw);
   }
 }
 @media (max-width: 650px) {
