@@ -174,8 +174,8 @@ body {
 
 .display-time { width: 92px; }
 .display-model { width: clamp(108px, 10vw, 150px); }
-.display-tokens { width: 68px; }
-.display-prompts { width: 70px; }
+.display-activity { width: 120px; }
+.display-preset { width: clamp(112px, 11vw, 160px); }
 
 .header-signal-meter {
   position: absolute;
@@ -265,8 +265,8 @@ body {
   }
   .display-time { width: auto; flex: 0 1 86px; }
   .display-model { width: auto; flex: 1 1 108px; }
-  .display-tokens { width: auto; flex: 0 1 62px; }
-  .display-prompts { width: auto; flex: 0 1 64px; }
+  .display-activity { width: auto; flex: 0 1 112px; }
+  .display-preset { width: auto; flex: 1 1 108px; }
   .harness-display-segment { padding-inline: 5px; }
   .header-signal-meter { display: flex; }
   .harness-display-icon { display: none; }
@@ -274,11 +274,10 @@ body {
 }
 
 @media (max-width: 900px) {
-  .display-model,
-  .display-prompts { display: none; }
+  .display-model { display: none; }
   .harness-run-display {
-    flex-basis: 140px;
-    max-width: 165px;
+    flex-basis: 250px;
+    max-width: 260px;
   }
 }
 
@@ -289,8 +288,8 @@ body {
   .brand svg { width: 30px; height: 30px; }
   .harness-run-display {
     height: var(--header-control-size);
-    flex-basis: 128px;
-    max-width: 145px;
+    flex-basis: 200px;
+    max-width: 215px;
   }
   .toolbar { margin-left: 70px; }
   .harness-display-segment { padding: 4px 6px; }
@@ -301,11 +300,10 @@ body {
 @media (max-width: 500px) {
   :root { --header-control-size: 36px; }
   .topbar { gap: 6px; padding-inline: 8px; }
-  .display-tokens { display: none; }
   .harness-run-display {
-    flex: 1 1 76px;
-    min-width: 70px;
-    max-width: 82px;
+    flex: 1 1 150px;
+    min-width: 135px;
+    max-width: 165px;
   }
   .toolbar { margin-left: 62px; }
   .display-time { flex: 1 1 auto; }
@@ -1410,6 +1408,7 @@ workspace-panel.rig-file-explorer {
   width: var(--rig-presets-width);
   min-height: 0;
   flex-direction: column;
+  overflow: hidden;
   border-left: 1px solid #3c4245;
   background: linear-gradient(145deg, #171b1d, #0b0f10);
   box-shadow: -7px 0 18px #0006;
@@ -1565,23 +1564,28 @@ workspace-panel.rig-file-explorer {
 }
 
 .presets-list {
-  display: grid;
+  display: flex;
   flex: 1;
   min-height: 0;
+  flex-direction: column;
   gap: 8px;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   padding: 12px;
 }
 
 .preset-shortcut {
   display: block;
+  position: relative;
   width: 100%;
   border: 1px solid #32393b;
   border-radius: 9px;
   background: #121618;
   color: #eef1ee;
-  padding: 11px 12px;
+  padding: 11px 40px 11px 12px;
   text-align: left;
+  cursor: pointer;
 }
 
 .preset-shortcut:hover,
@@ -1591,17 +1595,67 @@ workspace-panel.rig-file-explorer {
   outline: none;
 }
 
-.preset-shortcut strong,
+.preset-shortcut-name,
 .preset-shortcut span {
   display: block;
 }
 
-.preset-shortcut strong {
+.preset-shortcut-name {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
   font-size: 12px;
+  font-weight: 700;
   line-height: 1.35;
+  padding: 0;
+  outline: none;
 }
 
-.preset-shortcut span {
+.preset-shortcut-name::selection {
+  background: #2e7ea3;
+  color: #f5fbff;
+}
+
+.preset-shortcut-name:focus {
+  text-decoration: underline;
+  text-decoration-color: #5da5c8;
+  text-decoration-thickness: 1px;
+}
+
+.preset-shortcut-delete {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: #253137;
+  color: #d8e4ea;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease, background 120ms ease, color 120ms ease;
+}
+
+.preset-shortcut:hover .preset-shortcut-delete,
+.preset-shortcut:focus-visible .preset-shortcut-delete,
+.preset-shortcut:focus-within .preset-shortcut-delete {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.preset-shortcut-delete:hover,
+.preset-shortcut-delete:focus-visible {
+  background: #7d2d2d;
+  color: #fff2f2;
+  outline: none;
+}
+
+.preset-shortcut-meta {
   margin-top: 4px;
   color: #97a2a8;
   font-size: 11px;
@@ -3963,13 +4017,14 @@ rig-io.io.io-active .signal-fill {
 .harness-display-segment small { font-size: clamp(5px, .42vw, 7px); }
 .display-time,
 .display-model,
-.display-tokens,
-.display-prompts {
+.display-activity,
+.display-preset {
   display: flex;
   width: auto;
 }
 
 .display-model { flex-grow: 1.5; }
+.display-preset { flex-grow: 1.2; }
 
 .header-signal-meter {
   position: static;

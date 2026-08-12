@@ -13,10 +13,20 @@ import { codeLanguageLabel, renderFilePreview } from "/lib/file-utils.js";
 import { harnessWaveIcon, liveLogIcon, presetsIcon, workspaceExplorerIcon } from "/lib/icons.js";
 import { appendMessageText } from "/lib/message-rendering.js";
 import { mcpBlocks, quoteToml, setToolBlockEnabled } from "/lib/mcp-config.js";
-import { normalizeToolPermissions } from "/lib/settings.js";
+import { effectStatesFromEffects, effectStep, normalizeRigComponentState } from "/lib/rig-presets.js";
+import { defaultProviderSettings, normalizeToolPermissions } from "/lib/settings.js";
 import { createSession, titleFromPrompt } from "/lib/sessions.js";
 import { renderWorkspaceNodes, renderWorkspacePicker } from "/lib/workspace-rendering.js";
-import { loadConfig, loadHealth, loadProviderModels, loadSystemPrompts, saveConfig, saveSystemPrompt } from "/services/settings-api.js";
+import {
+  loadConfig,
+  loadHealth,
+  loadProviderModels,
+  loadRigConfigurations,
+  loadSystemPrompts,
+  saveConfig,
+  saveRigConfigurations,
+  saveSystemPrompt,
+} from "/services/settings-api.js";
 import { loadUiState, saveUiState } from "/services/ui-state-api.js";
 import {
   loadWorkspaceFile,
@@ -55,6 +65,7 @@ const EXPLORER_VISIBLE_STORAGE_KEY = "ai-harness.rigExplorerVisible";
 const HISTORY_VISIBLE_STORAGE_KEY = "ai-harness.rigHistoryVisible";
 const LOG_VISIBLE_STORAGE_KEY = "ai-harness.rigLogVisible";
 const PRESETS_VISIBLE_STORAGE_KEY = "ai-harness.rigPresetsVisible";
+const ACTIVE_PRESET_STORAGE_KEY = "ai-harness.activeRigPresetId";
 const initialExplorerVisible = localStorage.getItem(EXPLORER_VISIBLE_STORAGE_KEY) === "true";
 const initialHistoryVisible = localStorage.getItem(HISTORY_VISIBLE_STORAGE_KEY) === "true";
 const initialPresetsVisible = localStorage.getItem(PRESETS_VISIBLE_STORAGE_KEY) === "true";
@@ -65,8 +76,8 @@ app.classList.toggle("presets-hidden", !initialPresetsVisible);
 
 const runTimeValue = element("strong", { text: "00:00.0" });
 const runModelValue = element("strong", { text: "—" });
-const runTokensValue = element("strong", { text: "0" });
-const runPromptsValue = element("strong", { text: "0" });
+const runActivityValue = element("strong", { text: "0 runs · 0 tok" });
+const runPresetValue = element("strong", { text: "—" });
 const displaySegment = (label, value, className = "") => element("div", {
   className: `harness-display-segment ${className}`.trim(),
   children: [
@@ -93,8 +104,8 @@ const harnessRunDisplay = element("section", {
   children: [
     displaySegment("elapsed", runTimeValue, "display-time"),
     displaySegment("model", runModelValue, "display-model"),
-    displaySegment("tokens", runTokensValue, "display-tokens"),
-    displaySegment("prompts", runPromptsValue, "display-prompts"),
+    displaySegment("activity", runActivityValue, "display-activity"),
+    displaySegment("current preset", runPresetValue, "display-preset"),
   ],
 });
 const headerToolbar = document.querySelector(".topbar .toolbar");
@@ -206,7 +217,20 @@ const conversationHistory = element("aside", {
   ],
 });
 app.append(conversationHistory);
-const presetsList = element("div", { className: "presets-list" });
+const presetsCount = element("span", { text: "0 presets" });
+const createPresetButton = element("button", {
+  className: "conversation-history-create",
+  attrs: {
+    type: "button",
+    title: "Save current configuration as preset",
+    "aria-label": "Save current configuration as preset",
+  },
+  children: [element("span", { text: "+", attrs: { "aria-hidden": "true" } })],
+});
+const presetsList = element("div", {
+  className: "presets-list",
+  children: [element("p", { className: "conversation-history-empty", text: "No presets yet." })],
+});
 const presetsPanel = element("aside", {
   className: "rig-presets",
   attrs: { "aria-labelledby": "presetsWindowTitle" },
@@ -214,8 +238,9 @@ const presetsPanel = element("aside", {
     element("header", { children: [
       element("div", { children: [
         element("h2", { text: "Presets", attrs: { id: "presetsWindowTitle" } }),
-        element("span", { text: "Prompt shortcuts" }),
+        presetsCount,
       ] }),
+      createPresetButton,
     ] }),
     presetsList,
   ],
@@ -329,31 +354,11 @@ const signalUnits = [
 ];
 const signalConnectors = [];
 const guitarEffects = [inputComposer, toolOrchestrator, mcpServers, outputValidator];
+const configurableEffectSteps = guitarEffects.map((effect) => effectStep(effect));
 
 const disabledEffectSteps = () => guitarEffects
   .filter((effect) => !effect.enabled)
-  .map((effect) => effect.dataset.step);
-
-const EFFECT_STATES_STORAGE_KEY = "ai-harness.rigEffectStatesByConversation";
-let effectStatesByConversation = {};
-try {
-  effectStatesByConversation = JSON.parse(localStorage.getItem(EFFECT_STATES_STORAGE_KEY) || "{}");
-} catch {
-  localStorage.removeItem(EFFECT_STATES_STORAGE_KEY);
-}
-
-const applyConversationEffectStates = (conversationId) => {
-  const states = effectStatesByConversation[conversationId] || {};
-  guitarEffects.forEach((effect) => effect.setEnabled(states[effect.dataset.step] !== false, false));
-};
-
-document.addEventListener("effect-toggle", (event) => {
-  const states = Object.fromEntries(guitarEffects.map((effect) => [effect.dataset.step, effect.enabled]));
-  effectStatesByConversation[sessionId] = states;
-  localStorage.setItem(EFFECT_STATES_STORAGE_KEY, JSON.stringify(effectStatesByConversation));
-  appendLog("FLOW", `${event.detail.step} ${event.detail.enabled ? "enabled" : "bypassed"}`);
-  if (activeHarnessStage) setHarnessStage(activeHarnessStage);
-});
+  .map((effect) => effectStep(effect));
 
 const harnessStages = [
   { name: "capture", units: [microphone] },
@@ -443,36 +448,6 @@ const stepPromptConfig = new Map([
   }],
 ]);
 
-const presetShortcuts = [
-  { title: "Whisper", description: "Transcription model and API details", unit: whisperModel },
-  { title: "Input Composer", description: "Prompt refinement preset", unit: inputComposer },
-  { title: "Model Engine", description: "Agent instructions and model behavior", unit: modelEngine },
-  { title: "Tool Orchestrator", description: "Tool routing contract and permissions", unit: toolOrchestrator },
-  { title: "MCP Servers", description: "MCP presets and server configuration", unit: mcpServers },
-  { title: "Output Validation", description: "Validation reminder and checks", unit: outputValidator },
-  { title: "Tape Player", description: "Workspace context preset", unit: responseRenderer },
-];
-
-const renderPresetShortcuts = () => {
-  presetsList.replaceChildren(...presetShortcuts.map((preset) => {
-    const button = element("button", {
-      className: "preset-shortcut",
-      attrs: {
-        type: "button",
-        title: preset.title,
-        "aria-label": preset.title,
-      },
-      children: [
-        element("strong", { text: preset.title }),
-        element("span", { text: preset.description }),
-      ],
-    });
-    button.addEventListener("click", () => openStepPrompt(preset.unit));
-    return button;
-  }));
-};
-renderPresetShortcuts();
-
 const promptModalTitle = element("h2", { text: "System Prompts", attrs: { id: "stepPromptModalTitle" } });
 const promptModalStep = element("p", { className: "step-prompt-modal-step" });
 const promptModalContent = element("div", { className: "step-prompt-modal-content" });
@@ -542,6 +517,9 @@ const createToolSettings = () => {
     status.textContent = "Applying tool selection…";
     try {
       await saveUiState({ toolPermissions: storedToolPermissions });
+      const active = activeRigConfiguration();
+      if (active) active.toolPermissions = { ...storedToolPermissions };
+      renderPresetsList();
       if (!socketService?.send({ type: "tool_permissions", permissions: storedToolPermissions })) {
         throw new Error("The harness is offline.");
       }
@@ -557,7 +535,6 @@ const createToolSettings = () => {
 };
 
 const createMcpSettings = () => {
-  let configContent = "";
   const status = element("p", { className: "tool-selection-status", text: "Loading MCP servers…" });
   const serverList = element("div", { className: "mcp-server-list" });
   const typeInput = element("select", { children: [
@@ -580,14 +557,17 @@ const createMcpSettings = () => {
   const saveMcpContent = async (content) => {
     if (runActive) throw new Error("Wait for the current run to finish before changing MCP servers.");
     await saveConfig(content);
-    configContent = content;
+    currentMcpConfigContent = content;
+    const active = activeRigConfiguration();
+    if (active) active.mcpConfig = content;
+    renderPresetsList();
     socketService?.send({ type: "reload_tools" });
     appendLog("MCP", "Server configuration updated");
   };
 
   const renderServers = () => {
     serverList.replaceChildren();
-    const blocks = mcpBlocks(configContent);
+    const blocks = mcpBlocks(currentMcpConfigContent);
     if (!blocks.length) {
       serverList.append(element("p", { className: "step-prompt-modal-status", text: "No MCP servers configured." }));
       return;
@@ -602,7 +582,7 @@ const createMcpSettings = () => {
         toggle.disabled = true;
         status.textContent = `${block.enabled ? "Disabling" : "Enabling"} ${block.label}…`;
         try {
-          await saveMcpContent(setToolBlockEnabled(configContent, block, !block.enabled));
+          await saveMcpContent(setToolBlockEnabled(currentMcpConfigContent, block, !block.enabled));
           renderServers();
           status.textContent = `${block.label} ${block.enabled ? "disabled" : "enabled"}.`;
         } catch (error) {
@@ -649,7 +629,7 @@ const createMcpSettings = () => {
     addButton.disabled = true;
     status.textContent = "Adding MCP server…";
     try {
-      const prefix = configContent.trimEnd();
+      const prefix = currentMcpConfigContent.trimEnd();
       await saveMcpContent(`${prefix}${prefix ? "\n\n" : ""}${snippet}\n`);
       labelInput.value = ""; urlInput.value = ""; commandInput.value = ""; argsInput.value = ""; cwdInput.value = "";
       renderServers();
@@ -677,7 +657,7 @@ const createMcpSettings = () => {
   ] });
   updateTypeFields();
   loadConfig().then((payload) => {
-    configContent = payload.content || "";
+    currentMcpConfigContent = payload.content || "";
     renderServers();
     status.textContent = payload.exists ? "MCP configuration loaded." : "No MCP configuration file yet.";
   }).catch((error) => { status.textContent = error.message; });
@@ -719,6 +699,9 @@ const renderStepPrompts = (config) => {
       try {
         await saveSystemPrompt(key, editor.value);
         prompt.content = editor.value;
+        const active = activeRigConfiguration();
+        if (active) active.systemPrompts = { ...(active.systemPrompts || {}), [key]: editor.value };
+        renderPresetsList();
         socketService?.send({ type: "provider_settings", ...modelSettings });
         status.textContent = "Saved";
         appendLog("PROMPT", `${prompt.title} updated`);
@@ -882,11 +865,16 @@ saveModelConfigButton.addEventListener("click", async () => {
     modelConfigStatus.textContent = "Wait for the current run to finish before changing models.";
     return;
   }
-  modelSettings = currentModelForm();
+  modelSettings = normalizeRigProviderSettings(currentModelForm(), modelSettings);
   saveModelConfigButton.disabled = true;
   modelConfigStatus.textContent = "Applying model…";
   try {
     await saveUiState({ providerSettings: modelSettings });
+    const active = activeRigConfiguration();
+    if (active) {
+      active.providerSettings = { ...modelSettings };
+      active.updatedAt = Date.now();
+    }
     if (!socketService?.send({ type: "provider_settings", ...modelSettings })) {
       throw new Error("The harness is offline.");
     }
@@ -1007,7 +995,6 @@ requestAnimationFrame(fitRigToViewport);
 new ResizeObserver(fitRigToViewport).observe(rigContainer);
 
 let activeInputSource = microphone;
-const INPUT_SOURCE_STORAGE_KEY = "ai-harness.rigInputSource";
 const setPromptFooterMode = (microphoneSelected) => {
   promptFooter.classList.remove("input-microphone", "input-keyboard");
   promptFooter.classList.add(microphoneSelected ? "input-microphone" : "input-keyboard");
@@ -1015,21 +1002,25 @@ const setPromptFooterMode = (microphoneSelected) => {
   promptInput.hidden = microphoneSelected;
 };
 
-function toggleInputSource() {
+function toggleInputSource({ forceSource = null, persistConfiguration = true, logChange = true } = {}) {
   if (activeInputSource === microphone && microphoneRecorder?.state === "recording") {
     appendLog("INPUT", "Stop the microphone recording before switching input sources");
     return;
   }
-  const nextSource = activeInputSource === microphone ? midiKeyboard : microphone;
+  const nextSource = forceSource
+    ? (forceSource === "keyboard" ? midiKeyboard : microphone)
+    : (activeInputSource === microphone ? midiKeyboard : microphone);
+  if (nextSource === activeInputSource) return;
   if (nextSource === midiKeyboard) signalUnits.splice(0, 2, midiKeyboard);
   else signalUnits.splice(0, 1, microphone, whisperModel);
   activeInputSource = nextSource;
   renderSignalChain();
   if (activeHarnessStage === "input") setHarnessStage("input");
-  appendLog("INPUT", nextSource === microphone ? "Microphone selected" : "MIDI keyboard selected");
+  if (logChange) appendLog("INPUT", nextSource === microphone ? "Microphone selected" : "MIDI keyboard selected");
   setPromptFooterMode(nextSource === microphone);
-  localStorage.setItem(INPUT_SOURCE_STORAGE_KEY, nextSource === microphone ? "microphone" : "keyboard");
   requestAnimationFrame(fitRigToViewport);
+  syncActiveRigConfigurationComponentState();
+  if (persistConfiguration) persistRigConfigurationSelection();
   nextSource.focus();
 }
 
@@ -1196,6 +1187,7 @@ let conversation = [];
 let sessions = [];
 let activeRigSession = null;
 let sessionSaveQueue = Promise.resolve();
+let rigConfigurationSaveQueue = Promise.resolve();
 let socketService;
 let runActive = false;
 let runPaused = false;
@@ -1206,6 +1198,9 @@ let reconnectTimer = null;
 let promptWorkspace = ".";
 let modelSettings = { provider: "openai", model: "gpt-5.1-codex", baseUrl: "", apiKey: "" };
 let storedToolPermissions = normalizeToolPermissions();
+let rigConfigurations = [];
+let activeRigConfigurationId = null;
+let currentMcpConfigContent = "";
 let inputTokens = 0;
 let outputTokens = 0;
 let currentPromptTokenEntryId = null;
@@ -1217,6 +1212,321 @@ let workspacePickerRoot = null;
 let workspacePickerParent = null;
 let pendingWorkspacePath = null;
 let editingFilePath = null;
+
+const readStoredActiveRigConfigurationId = () => {
+  const value = localStorage.getItem(ACTIVE_PRESET_STORAGE_KEY);
+  return value ? String(value) : null;
+};
+
+const writeStoredActiveRigConfigurationId = (value) => {
+  if (value) localStorage.setItem(ACTIVE_PRESET_STORAGE_KEY, String(value));
+  else localStorage.removeItem(ACTIVE_PRESET_STORAGE_KEY);
+};
+
+const normalizeRigProviderSettings = (settings = {}, fallback = defaultProviderSettings()) => {
+  const fallbackProvider = ["openai", "ollama", "custom"].includes(fallback.provider) ? fallback.provider : "openai";
+  const provider = ["openai", "ollama", "custom"].includes(settings.provider)
+    ? settings.provider
+    : fallbackProvider;
+  const fallbackModel = typeof fallback.model === "string" ? fallback.model.trim() : "";
+  const model = typeof settings.model === "string" && settings.model.trim()
+    ? settings.model.trim()
+    : fallbackModel && fallbackProvider === provider
+      ? fallbackModel
+      : defaultModelForProvider(provider);
+  return {
+    provider,
+    model,
+    baseUrl: typeof settings.baseUrl === "string" ? settings.baseUrl : String(fallback.baseUrl || ""),
+    apiKey: typeof settings.apiKey === "string" ? settings.apiKey : String(fallback.apiKey || ""),
+  };
+};
+
+const normalizeRigConfiguration = (configuration = {}, index = 0) => ({
+  id: String(configuration.id || crypto.randomUUID()),
+  name: String(configuration.name || `Preset ${index + 1}`),
+  componentState: normalizeRigComponentState(configuration.componentState),
+  systemPrompts: configuration.systemPrompts && typeof configuration.systemPrompts === "object" ? { ...configuration.systemPrompts } : {},
+  providerSettings: normalizeRigProviderSettings(configuration.providerSettings),
+  toolPermissions: normalizeToolPermissions(configuration.toolPermissions),
+  mcpConfig: String(configuration.mcpConfig || ""),
+  updatedAt: Number(configuration.updatedAt) || Date.now(),
+  selected: configuration.selected === true,
+});
+
+const activeRigConfiguration = () => (
+  rigConfigurations.find((configuration) => configuration.id === activeRigConfigurationId)
+  || rigConfigurations[0]
+  || null
+);
+
+const updateCurrentPresetDisplay = () => {
+  runPresetValue.textContent = activeRigConfiguration()?.name || "—";
+};
+
+const updateRunActivityDisplay = () => {
+  const runCount = conversation.filter((message) => message.role === "user").length;
+  const tokenCount = inputTokens + outputTokens;
+  runActivityValue.textContent = `${runCount} run${runCount === 1 ? "" : "s"} · ${tokenCount.toLocaleString()} tok`;
+};
+
+const currentEffectStates = () => effectStatesFromEffects(guitarEffects);
+
+const currentInputSourceValue = () => (activeInputSource === midiKeyboard ? "keyboard" : "microphone");
+
+const syncActiveRigConfigurationComponentState = () => {
+  const active = activeRigConfiguration();
+  if (!active) return null;
+  active.componentState = normalizeRigComponentState({
+    inputSource: currentInputSourceValue(),
+    effects: currentEffectStates(),
+  });
+  active.updatedAt = Date.now();
+  return active.componentState;
+};
+
+const buildCurrentRigConfigurationSnapshot = (configuration = activeRigConfiguration() || {}) => ({
+  ...configuration,
+  name: configuration.name || `Preset ${rigConfigurations.length || 1}`,
+  componentState: syncActiveRigConfigurationComponentState() || normalizeRigComponentState(),
+  systemPrompts: systemPromptsByKey
+    ? Object.fromEntries([...systemPromptsByKey].map(([key, prompt]) => [key, prompt.content]))
+    : { ...(configuration.systemPrompts || {}) },
+  providerSettings: normalizeRigProviderSettings(modelSettings, configuration.providerSettings),
+  toolPermissions: { ...storedToolPermissions },
+  mcpConfig: currentMcpConfigContent,
+  updatedAt: Date.now(),
+});
+
+const refreshSystemPromptCacheFromConfiguration = (configuration) => {
+  if (!systemPromptsByKey || !configuration?.systemPrompts) return;
+  for (const [key, prompt] of systemPromptsByKey.entries()) {
+    prompt.content = configuration.systemPrompts[key] ?? prompt.content;
+  }
+};
+
+const renderPresetsList = () => {
+  presetsList.replaceChildren();
+  if (!rigConfigurations.length) {
+    presetsList.append(element("p", { className: "conversation-history-empty", text: "No presets yet." }));
+    presetsCount.textContent = "0 presets";
+    updateCurrentPresetDisplay();
+    return;
+  }
+  rigConfigurations.forEach((configuration) => {
+    const normalizedState = normalizeRigComponentState(configuration.componentState);
+    const enabledCount = Object.values(normalizedState.effects).filter(Boolean).length;
+    const card = element("article", {
+      className: `preset-shortcut${configuration.id === activeRigConfigurationId ? " active" : ""}`,
+      attrs: { tabindex: "0", role: "button", "aria-pressed": String(configuration.id === activeRigConfigurationId) },
+    });
+    const nameInput = element("input", {
+      className: "preset-shortcut-name",
+      attrs: {
+        type: "text",
+        value: configuration.name,
+        "aria-label": "Preset name",
+        spellcheck: "false",
+      },
+    });
+    const meta = element("span", {
+      className: "preset-shortcut-meta",
+      text: `${normalizedState.inputSource === "keyboard" ? "Keyboard" : "Microphone"} · ${enabledCount}/${configurableEffectSteps.length} modules enabled`,
+    });
+    const deleteButton = element("button", {
+      className: "preset-shortcut-delete",
+      text: "×",
+      attrs: {
+        type: "button",
+        "aria-label": `Delete preset ${configuration.name}`,
+        title: `Delete preset ${configuration.name}`,
+      },
+    });
+    const selectConfiguration = async () => {
+      if (runActive || configuration.id === activeRigConfigurationId) return;
+      await persistRigConfigurationSelection();
+      activeRigConfigurationId = configuration.id;
+      writeStoredActiveRigConfigurationId(activeRigConfigurationId);
+      modelSettings = normalizeRigProviderSettings(configuration.providerSettings, modelSettings);
+      storedToolPermissions = normalizeToolPermissions(configuration.toolPermissions);
+      currentMcpConfigContent = configuration.mcpConfig || "";
+      refreshSystemPromptCacheFromConfiguration(configuration);
+      applyRigComponentState(configuration.componentState);
+      modelEngine.setModel(modelSettings.model);
+      runModelValue.textContent = modelSettings.model;
+      renderPresetsList();
+      await persistRigConfigurationSelection();
+      if (socketService?.isOpen) {
+        socketService.send({ type: "provider_settings", ...modelSettings });
+        socketService.send({ type: "tool_permissions", permissions: storedToolPermissions });
+        socketService.send({ type: "reload_tools" });
+      }
+      appendLog("PRESET", `Preset selected: ${configuration.name}`);
+    };
+    const commitNameChange = async () => {
+      const nextName = await renameRigConfiguration(configuration.id, nameInput.value);
+      if (nextName) nameInput.value = nextName;
+    };
+    nameInput.addEventListener("click", (event) => event.stopPropagation());
+    nameInput.addEventListener("mousedown", (event) => event.stopPropagation());
+    nameInput.addEventListener("focus", () => {
+      nameInput.dataset.originalValue = configuration.name;
+      nameInput.select();
+    });
+    nameInput.addEventListener("keydown", (event) => {
+      event.stopPropagation();
+      if (event.key === "Enter") {
+        event.preventDefault();
+        nameInput.blur();
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        nameInput.value = nameInput.dataset.originalValue || configuration.name;
+        nameInput.blur();
+      }
+    });
+    nameInput.addEventListener("blur", () => {
+      commitNameChange();
+    });
+    deleteButton.addEventListener("click", async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      await deleteRigConfiguration(configuration.id);
+    });
+    deleteButton.addEventListener("mousedown", (event) => event.stopPropagation());
+    card.addEventListener("click", (event) => {
+      if (event.target === nameInput || event.target === deleteButton) return;
+      selectConfiguration();
+    });
+    card.addEventListener("keydown", (event) => {
+      if (event.target !== card) return;
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      selectConfiguration();
+    });
+    card.append(deleteButton, nameInput, meta);
+    presetsList.append(card);
+  });
+  presetsCount.textContent = `${rigConfigurations.length} preset${rigConfigurations.length === 1 ? "" : "s"}`;
+  updateCurrentPresetDisplay();
+};
+
+const persistRigConfigurationList = (configurations, activeConfigurationId, {
+  announce = false,
+  announceName = null,
+  errorPrefix = "Preset save failed",
+} = {}) => {
+  const payload = configurations.map((configuration) => ({
+    ...configuration,
+    selected: configuration.id === activeRigConfigurationId,
+  }));
+  rigConfigurationSaveQueue = rigConfigurationSaveQueue
+    .then(() => saveRigConfigurations(payload, activeRigConfigurationId))
+    .then((result) => {
+      rigConfigurations = (result.configurations || []).map(normalizeRigConfiguration);
+      activeRigConfigurationId = result.activeConfigurationId || activeRigConfigurationId;
+      writeStoredActiveRigConfigurationId(activeRigConfigurationId);
+      renderPresetsList();
+      refreshSystemPromptCacheFromConfiguration(activeRigConfiguration());
+      if (announce) appendLog("PRESET", `Preset saved: ${activeRigConfiguration()?.name || announceName || "Preset"}`);
+    })
+    .catch((error) => appendLog("PRESET", `${errorPrefix}: ${error.message}`, "log-error"));
+  return rigConfigurationSaveQueue;
+};
+
+const persistRigConfigurationSelection = ({ announce = false } = {}) => {
+  const active = activeRigConfiguration();
+  if (!active) return Promise.resolve();
+  const snapshot = buildCurrentRigConfigurationSnapshot(active);
+  rigConfigurations = rigConfigurations.map((configuration) => (
+    configuration.id === snapshot.id ? snapshot : configuration
+  ));
+  return persistRigConfigurationList(rigConfigurations, activeRigConfigurationId, {
+    announce,
+    announceName: snapshot.name,
+    errorPrefix: "Preset save failed",
+  });
+};
+
+const renameRigConfiguration = (configurationId, rawName) => {
+  const index = rigConfigurations.findIndex((configuration) => configuration.id === configurationId);
+  if (index < 0) return Promise.resolve(null);
+  const current = rigConfigurations[index];
+  const nextName = String(rawName || "").trim() || `Preset ${index + 1}`;
+  if (nextName === current.name) {
+    updateCurrentPresetDisplay();
+    return Promise.resolve(nextName);
+  }
+  rigConfigurations = rigConfigurations.map((configuration, configurationIndex) => (
+    configurationIndex === index
+      ? { ...configuration, name: nextName, updatedAt: Date.now() }
+      : configuration
+  ));
+  updateCurrentPresetDisplay();
+  return persistRigConfigurationList(rigConfigurations, activeRigConfigurationId, {
+    announceName: nextName,
+    errorPrefix: "Preset rename failed",
+  }).then(() => nextName);
+};
+
+const deleteRigConfiguration = async (configurationId) => {
+  if (runActive) return false;
+  const index = rigConfigurations.findIndex((configuration) => configuration.id === configurationId);
+  if (index < 0) return false;
+  if (rigConfigurations.length <= 1) {
+    appendLog("PRESET", "At least one preset must remain", "log-error");
+    return false;
+  }
+  const deleted = rigConfigurations[index];
+  const wasActive = configurationId === activeRigConfigurationId;
+  const remainingConfigurations = rigConfigurations.filter((configuration) => configuration.id !== configurationId);
+  let nextActiveConfigurationId = activeRigConfigurationId;
+  if (wasActive) {
+    nextActiveConfigurationId = remainingConfigurations[Math.min(index, remainingConfigurations.length - 1)]?.id || remainingConfigurations[0]?.id || null;
+    const nextActiveConfiguration = remainingConfigurations.find((configuration) => configuration.id === nextActiveConfigurationId) || null;
+    if (nextActiveConfiguration) {
+      activeRigConfigurationId = nextActiveConfiguration.id;
+      writeStoredActiveRigConfigurationId(activeRigConfigurationId);
+      modelSettings = normalizeRigProviderSettings(nextActiveConfiguration.providerSettings, modelSettings);
+      storedToolPermissions = normalizeToolPermissions(nextActiveConfiguration.toolPermissions);
+      currentMcpConfigContent = nextActiveConfiguration.mcpConfig || "";
+      refreshSystemPromptCacheFromConfiguration(nextActiveConfiguration);
+      applyRigComponentState(nextActiveConfiguration.componentState);
+      modelEngine.setModel(modelSettings.model);
+      runModelValue.textContent = modelSettings.model;
+    }
+  }
+  rigConfigurations = remainingConfigurations;
+  renderPresetsList();
+  await persistRigConfigurationList(rigConfigurations, nextActiveConfigurationId, {
+    errorPrefix: "Preset delete failed",
+  });
+  if (wasActive) {
+    if (socketService?.isOpen) {
+      socketService.send({ type: "provider_settings", ...modelSettings });
+      socketService.send({ type: "tool_permissions", permissions: storedToolPermissions });
+      socketService.send({ type: "reload_tools" });
+    }
+  }
+  appendLog("PRESET", `Preset deleted: ${deleted.name}`);
+  return true;
+};
+
+const applyRigComponentState = (componentState = {}) => {
+  const normalized = normalizeRigComponentState(componentState);
+  guitarEffects.forEach((effect) => effect.setEnabled(normalized.effects[effectStep(effect)] !== false, false));
+  const shouldUseKeyboard = normalized.inputSource === "keyboard";
+  if (shouldUseKeyboard !== (activeInputSource === midiKeyboard)) {
+    toggleInputSource({ forceSource: normalized.inputSource, persistConfiguration: false, logChange: false });
+  }
+};
+
+document.addEventListener("effect-toggle", (event) => {
+  syncActiveRigConfigurationComponentState();
+  appendLog("FLOW", `${event.detail.step} ${event.detail.enabled ? "enabled" : "bypassed"}`);
+  persistRigConfigurationSelection();
+  renderPresetsList();
+  if (activeHarnessStage) setHarnessStage(activeHarnessStage);
+});
 
 const updateFileEditorPreview = (filePath, content) => {
   const language = renderFilePreview(fileEditorPreviewCode, content, { filePath });
@@ -1457,7 +1767,7 @@ const updateTokenMeters = () => {
   inputChannel.setTokenCount(inputTokens, relativeMaximum);
   outputChannel.setTokenCount(outputTokens, relativeMaximum);
   responseRenderer.setTokenCount(outputTokens);
-  runTokensValue.textContent = (inputTokens + outputTokens).toLocaleString();
+  updateRunActivityDisplay();
 };
 
 const addResponseUsage = (response = {}) => {
@@ -1741,7 +2051,6 @@ function switchRigSession(nextSessionId) {
   persistRigSessions();
   activeRigSession = nextSession;
   sessionId = nextSession.id;
-  applyConversationEffectStates(sessionId);
   conversation = Array.isArray(nextSession.messages) ? nextSession.messages : [];
   activeRigSession.tokenHistory = Array.isArray(nextSession.tokenHistory)
     ? nextSession.tokenHistory.map((entry, index) => normalizeTokenHistoryEntry(entry, index))
@@ -1750,7 +2059,7 @@ function switchRigSession(nextSessionId) {
   promptWorkspace = nextSession.workspace || promptWorkspace;
   workspaceInput.value = promptWorkspace;
   filesWorkspaceLabel.textContent = promptWorkspace;
-  runPromptsValue.textContent = String(conversation.filter((message) => message.role === "user").length);
+  updateRunActivityDisplay();
   renderConversationMessages();
   renderConversationList();
   resetHarnessDisplay();
@@ -1771,11 +2080,8 @@ function createRigConversation() {
   sessions = [nextSession, ...sessions];
   activeRigSession = nextSession;
   sessionId = nextSession.id;
-  applyConversationEffectStates(sessionId);
   conversation = nextSession.messages;
   currentPromptTokenEntryId = null;
-  runPromptsValue.textContent = "0";
-  runTokensValue.textContent = "0";
   inputTokens = 0;
   outputTokens = 0;
   updateTokenMeters();
@@ -1789,6 +2095,21 @@ function createRigConversation() {
 }
 
 newConversationButton.addEventListener("click", createRigConversation);
+createPresetButton.addEventListener("click", async () => {
+  if (runActive) return;
+  await persistRigConfigurationSelection();
+  const nextConfiguration = normalizeRigConfiguration({
+    id: crypto.randomUUID(),
+    name: `Preset ${rigConfigurations.length + 1}`,
+    ...buildCurrentRigConfigurationSnapshot({}),
+    selected: true,
+  }, rigConfigurations.length);
+  rigConfigurations = [nextConfiguration, ...rigConfigurations.map((configuration) => ({ ...configuration, selected: false }))];
+  activeRigConfigurationId = nextConfiguration.id;
+  writeStoredActiveRigConfigurationId(activeRigConfigurationId);
+  renderPresetsList();
+  await persistRigConfigurationSelection({ announce: true });
+});
 
 const beginStream = () => {
   streamingText = "";
@@ -1838,6 +2159,12 @@ const handleSocketMessage = (payload) => {
     return;
   }
   if (payload.type === "provider_settings") {
+    modelSettings = normalizeRigProviderSettings({
+      ...modelSettings,
+      provider: payload.provider,
+      model: payload.model,
+      baseUrl: payload.baseUrl,
+    }, modelSettings);
     modelEngine.setModel(payload.model);
     runModelValue.textContent = payload.model || "—";
     appendLog("MODEL", payload.model || "Model updated", payload);
@@ -1974,7 +2301,7 @@ const submitPrompt = () => {
     activeRigSession.title = titleFromPrompt(prompt);
   }
   persistRigSessions();
-  runPromptsValue.textContent = String(conversation.filter((message) => message.role === "user").length);
+  updateRunActivityDisplay();
   runModelValue.textContent = modelSettings.model || runModelValue.textContent;
   startPromptTimer();
   setHarnessStage("input");
@@ -2048,13 +2375,8 @@ rewindButton.addEventListener("click", () => {
   sessionId = nextSession.id;
   conversation = nextSession.messages;
   currentPromptTokenEntryId = null;
-  effectStatesByConversation = {};
-  localStorage.setItem(EFFECT_STATES_STORAGE_KEY, JSON.stringify(effectStatesByConversation));
-  applyConversationEffectStates(sessionId);
   renderConversationMessages();
   renderConversationList();
-  runPromptsValue.textContent = "0";
-  runTokensValue.textContent = "0";
   inputTokens = 0;
   outputTokens = 0;
   updateTokenMeters();
@@ -2250,8 +2572,6 @@ window.addEventListener("blur", () => {
 });
 
 const initializePromptStream = async () => {
-  const storedInputSource = localStorage.getItem(INPUT_SOURCE_STORAGE_KEY);
-  if (storedInputSource === "keyboard" && activeInputSource !== midiKeyboard) toggleInputSource();
   requestAnimationFrame(() => setPromptFooterMode(activeInputSource === microphone));
   setExplorerVisible(localStorage.getItem(EXPLORER_VISIBLE_STORAGE_KEY) === "true");
   setHistoryVisible(localStorage.getItem(HISTORY_VISIBLE_STORAGE_KEY) === "true");
@@ -2263,7 +2583,7 @@ const initializePromptStream = async () => {
   }
   requestAnimationFrame(() => app.classList.remove("ui-initializing"));
   try {
-    const [health, state] = await Promise.all([loadHealth(), loadUiState()]);
+    const [health, state, rigConfigurationState] = await Promise.all([loadHealth(), loadUiState(), loadRigConfigurations()]);
     sessions = Array.isArray(state.sessions) && state.sessions.length
       ? state.sessions.map((session) => ({
         ...session,
@@ -2277,27 +2597,37 @@ const initializePromptStream = async () => {
       : [createSession("AI Harness Session", health.workspace || ".")];
     activeRigSession = sessions.find((session) => session.id === state.activeSessionId) || sessions[0];
     sessionId = activeRigSession.id;
-    applyConversationEffectStates(sessionId);
     conversation = activeRigSession.messages;
     promptWorkspace = activeRigSession.workspace || health.workspace || ".";
+    rigConfigurations = Array.isArray(rigConfigurationState.configurations)
+      ? rigConfigurationState.configurations.map(normalizeRigConfiguration)
+      : [];
+    const storedActiveConfigurationId = readStoredActiveRigConfigurationId();
+    activeRigConfigurationId = rigConfigurations.some((configuration) => configuration.id === storedActiveConfigurationId)
+      ? storedActiveConfigurationId
+      : (rigConfigurationState.activeConfigurationId || rigConfigurations[0]?.id || null);
+    writeStoredActiveRigConfigurationId(activeRigConfigurationId);
     renderConversationMessages();
     renderConversationList();
-    runPromptsValue.textContent = String(conversation.filter((message) => message.role === "user").length);
+    renderPresetsList();
+    updateRunActivityDisplay();
     const selectedProvider = Array.isArray(state.providers)
       ? state.providers.find((provider) => provider.selected)
       : null;
-    const stored = selectedProvider || state.providerSettings;
+    const stored = activeRigConfiguration()?.providerSettings || selectedProvider || state.providerSettings;
     if (stored) {
-      modelSettings = {
-        provider: stored.type || stored.provider || "openai",
-        model: stored.model || defaultModelForProvider(stored.type || stored.provider),
-        baseUrl: stored.baseUrl || "",
-        apiKey: stored.apiKey || "",
-      };
+      modelSettings = normalizeRigProviderSettings({
+        provider: stored.type || stored.provider,
+        model: stored.model,
+        baseUrl: stored.baseUrl,
+        apiKey: stored.apiKey,
+      }, modelSettings);
       modelEngine.setModel(modelSettings.model);
       runModelValue.textContent = modelSettings.model;
     }
-    storedToolPermissions = normalizeToolPermissions(state.toolPermissions);
+    storedToolPermissions = normalizeToolPermissions(activeRigConfiguration()?.toolPermissions || state.toolPermissions);
+    currentMcpConfigContent = activeRigConfiguration()?.mcpConfig || "";
+    applyRigComponentState(activeRigConfiguration()?.componentState);
   } catch (error) {
     appendLog("WARN", `Using default workspace: ${error.message}`);
   }

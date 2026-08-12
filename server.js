@@ -234,6 +234,25 @@ async function handleUiStateApi(req, res) {
   res.end();
 }
 
+async function handleRigConfigurationsApi(req, res) {
+  if (req.method === "GET") {
+    json(res, 200, { ok: true, ...uiStateStore.getRigConfigurations() });
+    return;
+  }
+  if (req.method === "PUT") {
+    try {
+      const body = JSON.parse(await readRequestBody(req, 250_000) || "{}");
+      const result = uiStateStore.setRigConfigurations(body.configurations, body.activeConfigurationId);
+      json(res, 200, { ok: true, ...result });
+    } catch (error) {
+      json(res, 400, { ok: false, error: error.message });
+    }
+    return;
+  }
+  res.writeHead(405, { allow: "GET, PUT" });
+  res.end();
+}
+
 async function handleSystemPromptsApi(req, res) {
   if (req.method === "GET") {
     json(res, 200, { ok: true, prompts: uiStateStore.getSystemPromptRows() });
@@ -931,6 +950,10 @@ const server = http.createServer(async (req, res) => {
   }
   if (url.pathname === "/api/ui-state") {
     await handleUiStateApi(req, res);
+    return;
+  }
+  if (url.pathname === "/api/rig-configurations") {
+    await handleRigConfigurationsApi(req, res);
     return;
   }
   if (url.pathname === "/api/system-prompts") {

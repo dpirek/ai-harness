@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { createUiStateStore } from "../lib/ui-state.js";
+import { DEFAULT_SYSTEM_PROMPTS } from "../lib/system-prompts.js";
 
 test("SQLite UI state store persists and updates allowed values", () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "ai-harness-ui-state-"));
@@ -45,7 +46,14 @@ test("SQLite UI state store persists and updates allowed values", () => {
       id: "custom", name: "custom", type: "custom", model: "model-a",
       baseUrl: "http://ai", apiKey: "key", selected: true,
     }],
-    toolPermissions: { read_file: true, run_command: false },
+    toolPermissions: {
+      list_files: true,
+      read_file: true,
+      write_file: true,
+      search_files: true,
+      curl: true,
+      run_command: false,
+    },
   });
   store.close();
 
@@ -58,7 +66,7 @@ test("SQLite UI state store persists and updates allowed values", () => {
     "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name",
   ).all().map(({ name }) => name);
   assert.deepEqual(tables, [
-    "events", "layout", "mcp_configuration", "messages", "provider_settings", "providers", "sessions", "system_prompts", "token_usage", "tool_permissions",
+    "events", "layout", "mcp_configuration", "messages", "provider_settings", "providers", "rig_configurations", "sessions", "system_prompts", "token_usage", "tool_permissions",
   ]);
   assert.equal(database.prepare("SELECT count(*) AS count FROM system_prompts").get().count, 5);
   const eventColumns = database.prepare("SELECT name FROM pragma_table_info('events')").all().map(({ name }) => name);
@@ -88,7 +96,17 @@ test("SQLite UI state store migrates legacy state and discards browser-only widt
   legacy.close();
 
   const store = createUiStateStore(databasePath);
-  assert.deepEqual(store.getAll(), { sidebarCollapsed: true });
+  assert.deepEqual(store.getAll(), {
+    sidebarCollapsed: true,
+    toolPermissions: {
+      list_files: true,
+      read_file: true,
+      write_file: true,
+      search_files: true,
+      curl: true,
+      run_command: true,
+    },
+  });
   store.close();
   const migrated = new DatabaseSync(databasePath, { readOnly: true });
   assert.equal(migrated.prepare(
@@ -156,5 +174,159 @@ test("SQLite UI state store migrates the single-provider schema", () => {
     baseUrl: "https://api.openai.com/v1", apiKey: "secret", selected: true,
   }]);
   store.close();
+  fs.rmSync(directory, { recursive: true });
+});
+
+test("SQLite UI state store persists rig configurations and syncs the active snapshot", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "ai-harness-ui-state-"));
+  const store = createUiStateStore(path.join(directory, "state.sqlite"));
+
+  const presetA = {
+    id: "preset-a",
+    name: "Microphone",
+    componentState: {
+      inputSource: "microphone",
+      effects: { composer: true, tools: true, mcp: true, validation: true },
+    },
+    systemPrompts: {
+      ...DEFAULT_SYSTEM_PROMPTS,
+      agent_instructions: "Agent prompt A",
+    },
+    providerSettings: {
+      provider: "openai",
+      model: "gpt-5.1-codex",
+      baseUrl: "",
+      apiKey: "openai-key",
+    },
+    toolPermissions: {
+      list_files: true,
+      read_file: true,
+      write_file: true,
+      search_files: true,
+      curl: true,
+      run_command: true,
+    },
+    mcpConfig: "[[mcp.servers]]\nserver_label = \"alpha\"\nserver_url = \"https://alpha.example/mcp\"",
+    selected: false,
+  };
+  const presetB = {
+    id: "preset-b",
+    name: "Keyboard",
+    componentState: {
+      inputSource: "keyboard",
+      effects: { composer: false, tools: true, mcp: false, validation: true },
+    },
+    systemPrompts: {
+      ...DEFAULT_SYSTEM_PROMPTS,
+      agent_instructions: "Agent prompt B",
+      validation_reminder: "Validate preset B",
+    },
+    providerSettings: {
+      provider: "ollama",
+      model: "llama3.2",
+      baseUrl: "http://localhost:11434",
+      apiKey: "",
+    },
+    toolPermissions: {
+      list_files: true,
+      read_file: false,
+      write_file: true,
+      search_files: false,
+      curl: true,
+      run_command: false,
+    },
+    mcpConfig: "[mcp_servers.beta]\ncommand = \"node\"\nargs = [\"server.js\"]",
+    selected: true,
+  };
+
+  const saved = store.setRigConfigurations([presetA, presetB], "preset-b");
+  assert.equal(saved.activeConfigurationId, "preset-b");
+  assert.equal(saved.configurations.length, 2);
+  assert.deepEqual(
+    saved.configurations.find((configuration) => configuration.id === "preset-b")?.componentState,
+    presetB.componentState,
+  );
+  assert.equal(store.getMcpConfig(), presetB.mcpConfig);
+  assert.equal(store.getSystemPrompts().agent_instructions, "Agent prompt B");
+  assert.equal(store.getSystemPrompts().validation_reminder, "Validate preset B");
+  assert.deepEqual(store.getAll().providerSettings, presetB.providerSettings);
+  assert.deepEqual(store.getAll().toolPermissions, presetB.toolPermissions);
+  assert.deepEqual(
+    store.getRigConfigurations().configurations.find((configuration) => configuration.id === "preset-b")?.componentState,
+    presetB.componentState,
+  );
+  assert.deepEqual(
+    store.getRigConfigurations().configurations.find((configuration) => configuration.id === "preset-b")?.providerSettings,
+    presetB.providerSettings,
+  );
+
+  store.setSystemPrompt("agent_instructions", "Agent prompt B2");
+  assert.equal(
+    store.getRigConfigurations().configurations.find((configuration) => configuration.id === "preset-b")?.systemPrompts.agent_instructions,
+    "Agent prompt B2",
+  );
+
+  store.setMcpConfig("[mcp_servers.gamma]\ncommand = \"uvx\"");
+  assert.equal(
+    store.getRigConfigurations().configurations.find((configuration) => configuration.id === "preset-b")?.mcpConfig,
+    "[mcp_servers.gamma]\ncommand = \"uvx\"",
+  );
+
+  store.set({
+    toolPermissions: {
+      list_files: false,
+      read_file: false,
+      write_file: true,
+      search_files: true,
+      curl: false,
+      run_command: false,
+    },
+  });
+  assert.deepEqual(
+    store.getRigConfigurations().configurations.find((configuration) => configuration.id === "preset-b")?.toolPermissions,
+    {
+      list_files: false,
+      read_file: false,
+      write_file: true,
+      search_files: true,
+      curl: false,
+      run_command: false,
+    },
+  );
+
+  store.set({
+    providerSettings: {
+      provider: "custom",
+      model: "custom-model-v2",
+      baseUrl: "http://localhost:8000/v1",
+      apiKey: "custom-key",
+    },
+  });
+  assert.deepEqual(
+    store.getRigConfigurations().configurations.find((configuration) => configuration.id === "preset-b")?.providerSettings,
+    {
+      provider: "custom",
+      model: "custom-model-v2",
+      baseUrl: "http://localhost:8000/v1",
+      apiKey: "custom-key",
+    },
+  );
+
+  store.close();
+  const reopened = createUiStateStore(path.join(directory, "state.sqlite"));
+  assert.deepEqual(
+    reopened.getRigConfigurations().configurations.find((configuration) => configuration.id === "preset-b")?.componentState,
+    presetB.componentState,
+  );
+  assert.deepEqual(
+    reopened.getRigConfigurations().configurations.find((configuration) => configuration.id === "preset-b")?.providerSettings,
+    {
+      provider: "custom",
+      model: "custom-model-v2",
+      baseUrl: "http://localhost:8000/v1",
+      apiKey: "custom-key",
+    },
+  );
+  reopened.close();
   fs.rmSync(directory, { recursive: true });
 });

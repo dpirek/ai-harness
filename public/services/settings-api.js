@@ -29,4 +29,25 @@ function loadHealth() {
   return requestJson("/api/health", {}, "Unable to load server health.");
 }
 
-export { loadConfig, loadHealth, loadProviderModels, loadSystemPrompts, saveConfig, saveSystemPrompt };
+function loadRigConfigurations() {
+  return requestJson("/api/rig-configurations", {}, "Unable to load rig configurations.");
+}
+
+function saveRigConfigurations(configurations, activeConfigurationId) {
+  return requestJson(
+    "/api/rig-configurations",
+    jsonOptions("PUT", { configurations, activeConfigurationId }),
+    "Unable to save rig configurations.",
+  );
+}
+
+export {
+  loadConfig,
+  loadHealth,
+  loadProviderModels,
+  loadRigConfigurations,
+  loadSystemPrompts,
+  saveConfig,
+  saveRigConfigurations,
+  saveSystemPrompt,
+};

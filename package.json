@@ -9,7 +9,7 @@
   "scripts": {
     "start": "node index.js",
     "web": "node server.js",
-    "dev": "node server.js --watch"
+    "dev": "nodemon server.js"
   },
   "keywords": [
     "ai",
