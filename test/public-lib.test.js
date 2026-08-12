@@ -66,6 +66,7 @@ test("rig preset helpers preserve component switches before elements connect", (
 
   assert.deepEqual(state, {
     inputSource: "keyboard",
+    modelDisplay: "engine",
     effects: {
       composer: false,
       tools: true,

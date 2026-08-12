@@ -177,6 +177,61 @@ test("SQLite UI state store migrates the single-provider schema", () => {
   fs.rmSync(directory, { recursive: true });
 });
 
+test("SQLite UI state store exposes and updates selected providers directly", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "ai-harness-ui-state-"));
+  const store = createUiStateStore(path.join(directory, "state.sqlite"));
+
+  store.set({
+    providers: [
+      {
+        id: "openai-prod",
+        name: "OpenAI Prod",
+        type: "openai",
+        model: "gpt-prod",
+        baseUrl: "https://api.openai.com/v1",
+        apiKey: "openai-key",
+        selected: true,
+      },
+      {
+        id: "ollama-local",
+        name: "Ollama Local",
+        type: "ollama",
+        model: "llama3.1",
+        baseUrl: "http://localhost:11434",
+        apiKey: "",
+        selected: false,
+      },
+    ],
+  });
+
+  assert.equal(store.getProviders().length, 2);
+  assert.deepEqual(store.getSelectedProvider(), {
+    id: "openai-prod",
+    name: "OpenAI Prod",
+    type: "openai",
+    model: "gpt-prod",
+    baseUrl: "https://api.openai.com/v1",
+    apiKey: "openai-key",
+    selected: true,
+  });
+
+  const next = store.setSelectedProvider("ollama-local");
+  assert.deepEqual(next, {
+    id: "ollama-local",
+    name: "Ollama Local",
+    type: "ollama",
+    model: "llama3.1",
+    baseUrl: "http://localhost:11434",
+    apiKey: "",
+    selected: true,
+  });
+  assert.equal(store.getAll().providerSettings.provider, "ollama");
+  assert.throws(() => store.setSelectedProvider("missing"), /Unknown provider: missing/);
+
+  store.close();
+  fs.rmSync(directory, { recursive: true });
+});
+
 test("SQLite UI state store persists rig configurations and syncs the active snapshot", () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "ai-harness-ui-state-"));
   const store = createUiStateStore(path.join(directory, "state.sqlite"));
@@ -186,6 +241,7 @@ test("SQLite UI state store persists rig configurations and syncs the active sna
     name: "Microphone",
     componentState: {
       inputSource: "microphone",
+      modelDisplay: "engine",
       effects: { composer: true, tools: true, mcp: true, validation: true },
     },
     systemPrompts: {
@@ -214,6 +270,7 @@ test("SQLite UI state store persists rig configurations and syncs the active sna
     name: "Keyboard",
     componentState: {
       inputSource: "keyboard",
+      modelDisplay: "synth",
       effects: { composer: false, tools: true, mcp: false, validation: true },
     },
     systemPrompts: {

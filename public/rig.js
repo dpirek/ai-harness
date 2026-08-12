@@ -15,7 +15,7 @@ import { codeLanguageLabel, renderFilePreview } from "/lib/file-utils.js";
 import { harnessWaveIcon, liveLogIcon, presetsIcon, workspaceExplorerIcon } from "/lib/icons.js";
 import { appendMessageText } from "/lib/message-rendering.js";
 import { mcpBlocks, quoteToml, setToolBlockEnabled } from "/lib/mcp-config.js";
-import { effectStatesFromEffects, effectStep, normalizeRigComponentState } from "/lib/rig-presets.js";
+import { effectStatesFromEffects, effectStep, normalizeRigComponentState, normalizeRigModelDisplay } from "/lib/rig-presets.js";
 import { defaultProviderSettings, normalizeToolPermissions } from "/lib/settings.js";
 import { createSession, titleFromPrompt } from "/lib/sessions.js";
 import { renderWorkspaceNodes, renderWorkspacePicker } from "/lib/workspace-rendering.js";
@@ -353,13 +353,17 @@ const responseRenderer = new CassettePlayer({
   },
 });
 const outputChannel = createChannel({ title: "OUTPUT", tokenCount: 0, signalLevel: 0, direction: "output", color: "#2479cf" });
+let activeModelStageUnit = modelEngine;
+const modelStageUnitForMode = (mode) => normalizeRigModelDisplay(mode) === "synth" ? workflowSynth : modelEngine;
+const modelDisplayModeForUnit = (unit) => unit === workflowSynth ? "synth" : "engine";
+const modelDisplayLabel = (mode) => normalizeRigModelDisplay(mode) === "synth" ? "music synth" : "model engine";
 
 const signalUnits = [
   microphone,
   whisperModel,
   inputChannel,
   inputComposer,
-  workflowSynth,
+  modelEngine,
   toolOrchestrator,
   mcpServers,
   outputValidator,
@@ -378,7 +382,7 @@ const harnessStages = [
   { name: "capture", units: [microphone] },
   { name: "transcription", units: [whisperModel] },
   { name: "input", units: [inputChannel, inputComposer] },
-  { name: "model", units: [workflowSynth] },
+  { name: "model", units: [modelEngine] },
   { name: "tool", units: [toolOrchestrator] },
   { name: "mcp", units: [mcpServers] },
   { name: "validation", units: [outputValidator] },
@@ -447,6 +451,7 @@ const stepPromptConfig = new Map([
     suppressEmptyPromptMessage: true,
   }],
   [inputComposer, { title: "Input Composer", keys: ["prompt_refinement"] }],
+  [modelEngine, { title: "Model Engine", keys: ["agent_instructions"] }],
   [workflowSynth, { title: "Workflow Synth", keys: ["agent_instructions"] }],
   [toolOrchestrator, { title: "Tool Orchestrator", keys: ["tool_contract"], showToolSettings: true }],
   [mcpServers, { title: "MCP Servers", keys: ["tool_contract"], showMcpSettings: true }],
@@ -1329,6 +1334,7 @@ const syncActiveRigConfigurationComponentState = () => {
   if (!active) return null;
   active.componentState = normalizeRigComponentState({
     inputSource: currentInputSourceValue(),
+    modelDisplay: modelDisplayModeForUnit(activeModelStageUnit),
     effects: currentEffectStates(),
   });
   active.updatedAt = Date.now();
@@ -1347,6 +1353,20 @@ const buildCurrentRigConfigurationSnapshot = (configuration = activeRigConfigura
   mcpConfig: currentMcpConfigContent,
   updatedAt: Date.now(),
 });
+
+const applyModelStageUnit = (nextUnit) => {
+  if (!nextUnit || nextUnit === activeModelStageUnit) return false;
+  const currentIndex = signalUnits.indexOf(activeModelStageUnit);
+  const fallbackIndex = Math.max(0, signalUnits.indexOf(inputComposer) + 1);
+  if (currentIndex >= 0) signalUnits.splice(currentIndex, 1, nextUnit);
+  else signalUnits.splice(fallbackIndex, 0, nextUnit);
+  activeModelStageUnit = nextUnit;
+  harnessStages.find(({ name }) => name === "model").units = [nextUnit];
+  renderSignalChain();
+  requestAnimationFrame(fitRigToViewport);
+  if (activeHarnessStage) setHarnessStage(activeHarnessStage);
+  return true;
+};
 
 const refreshSystemPromptCacheFromConfiguration = (configuration) => {
   if (!systemPromptsByKey || !configuration?.systemPrompts) return;
@@ -1399,6 +1419,39 @@ function toggleWorkflowSynthBypass() {
   if (activeHarnessStage) setHarnessStage(activeHarnessStage);
 }
 
+const toggleRigConfigurationModelDisplay = (configurationId) => {
+  const index = rigConfigurations.findIndex((configuration) => configuration.id === configurationId);
+  if (index < 0 || runActive) return Promise.resolve(null);
+  const current = rigConfigurations[index];
+  const currentMode = normalizeRigComponentState(current.componentState).modelDisplay;
+  const nextMode = currentMode === "synth" ? "engine" : "synth";
+  rigConfigurations = rigConfigurations.map((configuration, configurationIndex) => (
+    configurationIndex === index
+      ? {
+        ...configuration,
+        componentState: normalizeRigComponentState({
+          ...configuration.componentState,
+          modelDisplay: nextMode,
+        }),
+        updatedAt: Date.now(),
+      }
+      : configuration
+  ));
+  if (configurationId === activeRigConfigurationId) {
+    applyModelStageUnit(modelStageUnitForMode(nextMode));
+    syncActiveRigConfigurationComponentState();
+  }
+  renderPresetsList();
+  return persistRigConfigurationList(rigConfigurations, activeRigConfigurationId, {
+    errorPrefix: "Preset display mode update failed",
+  }).then(() => {
+    if (configurationId === activeRigConfigurationId) {
+      appendLog("PRESET", `Model stage set to ${modelDisplayLabel(nextMode)}`);
+    }
+    return nextMode;
+  });
+};
+
 const renderPresetsList = () => {
   presetsList.replaceChildren();
   if (!rigConfigurations.length) {
@@ -1426,6 +1479,15 @@ const renderPresetsList = () => {
     const meta = element("span", {
       className: "preset-shortcut-meta",
       text: `${normalizedState.inputSource === "keyboard" ? "Keyboard" : "Microphone"} · ${enabledCount}/${configurableEffectSteps.length} modules enabled`,
+    });
+    const displayToggle = element("button", {
+      className: "preset-shortcut-display-toggle",
+      text: modelDisplayLabel(normalizedState.modelDisplay),
+      attrs: {
+        type: "button",
+        "aria-label": `Switch ${configuration.name} between model engine and music synth`,
+        title: "Switch between model engine and music synth",
+      },
     });
     const deleteButton = element("button", {
       className: "preset-shortcut-delete",
@@ -1466,8 +1528,14 @@ const renderPresetsList = () => {
       await deleteRigConfiguration(configuration.id);
     });
     deleteButton.addEventListener("mousedown", (event) => event.stopPropagation());
+    displayToggle.addEventListener("click", async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      await toggleRigConfigurationModelDisplay(configuration.id);
+    });
+    displayToggle.addEventListener("mousedown", (event) => event.stopPropagation());
     card.addEventListener("click", (event) => {
-      if (event.target === nameInput || event.target === deleteButton) return;
+      if (event.target === nameInput || event.target === deleteButton || event.target === displayToggle) return;
       activateRigConfigurationById(configuration.id);
     });
     card.addEventListener("keydown", (event) => {
@@ -1476,7 +1544,7 @@ const renderPresetsList = () => {
       event.preventDefault();
       activateRigConfigurationById(configuration.id);
     });
-    card.append(deleteButton, nameInput, meta);
+    card.append(deleteButton, nameInput, meta, displayToggle);
     presetsList.append(card);
   });
   presetsCount.textContent = `${rigConfigurations.length} preset${rigConfigurations.length === 1 ? "" : "s"}`;
@@ -1587,6 +1655,7 @@ const deleteRigConfiguration = async (configurationId) => {
 
 const applyRigComponentState = (componentState = {}) => {
   const normalized = normalizeRigComponentState(componentState);
+  applyModelStageUnit(modelStageUnitForMode(normalized.modelDisplay));
   guitarEffects.forEach((effect) => effect.setEnabled(normalized.effects[effectStep(effect)] !== false, false));
   const shouldUseKeyboard = normalized.inputSource === "keyboard";
   if (shouldUseKeyboard !== (activeInputSource === midiKeyboard)) {

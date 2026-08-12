@@ -10,6 +10,12 @@ import { CodingAgent } from "./lib/agent.js";
 import { createTools } from "./lib/tools.js";
 import { loadMcpTools } from "./lib/mcp.js";
 import { createUiStateStore } from "./lib/ui-state.js";
+import {
+  defaultBaseUrlForProvider,
+  defaultModelForProvider,
+  normalizeProvider,
+  resolveProviderApiKey,
+} from "./lib/provider-config.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, "public");
@@ -78,23 +84,6 @@ function normalizeToolPermissions(value = {}) {
       typeof value[name] === "boolean" ? value[name] : defaultValue,
     ]),
   );
-}
-
-function normalizeProvider(value) {
-  if (value === "ollama" || value === "custom") return value;
-  return "openai";
-}
-
-function defaultModel(provider) {
-  if (provider === "ollama") return process.env.OLLAMA_MODEL || "llama3.1";
-  if (provider === "custom") return process.env.CUSTOM_AI_MODEL || "custom-model";
-  return process.env.OPENAI_MODEL || "gpt-5.1-codex";
-}
-
-function defaultBaseUrl(provider) {
-  if (provider === "ollama") return process.env.OLLAMA_BASE_URL || "http://localhost:11434";
-  if (provider === "custom") return process.env.CUSTOM_AI_BASE_URL || "http://localhost:8000/v1";
-  return process.env.OPENAI_BASE_URL || "";
 }
 
 function json(res, status, payload) {
@@ -181,10 +170,8 @@ async function handleModelsApi(req, res) {
       return;
     }
 
-    const origin = (baseUrl || defaultBaseUrl(provider) || "https://api.openai.com/v1").replace(/\/$/, "");
-    const bearer = provider === "custom"
-      ? apiKey || process.env.CUSTOM_AI_API_KEY || ""
-      : apiKey;
+    const origin = (baseUrl || defaultBaseUrlForProvider(provider) || "https://api.openai.com/v1").replace(/\/$/, "");
+    const bearer = resolveProviderApiKey(provider, apiKey);
     if (provider === "openai" && !bearer) {
       json(res, 400, { ok: false, error: "Save an OpenAI API key in Provider settings first." });
       return;
@@ -591,7 +578,7 @@ async function createAgentSession(socket, sessionId, streamStates, root, pending
   const provider = normalizeProvider(settings.provider || process.env.AI_PROVIDER);
   const model = settings.model ||
     process.env.AI_MODEL ||
-    defaultModel(provider);
+    defaultModelForProvider(provider);
   const approveAll = process.env.AI_HARNESS_WEB_APPROVE === "true";
   const approveMcp = async (description) => {
     if (approveAll) {
@@ -629,9 +616,7 @@ async function createAgentSession(socket, sessionId, streamStates, root, pending
     sendJson(socket, { type: "answer_delta", sessionId, text });
   };
 
-  const apiKey = provider === "custom"
-    ? settings.apiKey || process.env.CUSTOM_AI_API_KEY || ""
-    : settings.apiKey || "";
+  const apiKey = resolveProviderApiKey(provider, settings.apiKey);
   if (provider === "openai" && !apiKey) {
     throw new Error("Save an OpenAI API key in Provider settings first.");
   }
@@ -639,7 +624,7 @@ async function createAgentSession(socket, sessionId, streamStates, root, pending
   const client = createModelClient({
     provider,
     apiKey,
-    baseUrl: settings.baseUrl || defaultBaseUrl(provider),
+    baseUrl: settings.baseUrl || defaultBaseUrlForProvider(provider),
   });
   const permissions = normalizeToolPermissions(toolPermissions.get(socket));
   // Enabling a built-in tool in the web Tools settings is the user's
@@ -808,8 +793,8 @@ function handleWebSocket(socket, req) {
             type: "provider_settings",
             ok: true,
             provider,
-            model: model || defaultModel(provider),
-            baseUrl: baseUrl || defaultBaseUrl(provider),
+            model: model || defaultModelForProvider(provider),
+            baseUrl: baseUrl || defaultBaseUrlForProvider(provider),
           });
           continue;
         }
@@ -910,7 +895,7 @@ function handleWebSocket(socket, req) {
   sendJson(socket, {
     type: "ready",
     provider: envProvider,
-    model: process.env.AI_MODEL || defaultModel(envProvider),
+    model: process.env.AI_MODEL || defaultModelForProvider(envProvider),
     ollamaBaseUrl: process.env.OLLAMA_BASE_URL || "http://localhost:11434",
     customBaseUrl: process.env.CUSTOM_AI_BASE_URL || "http://localhost:8000/v1",
     approveAll: process.env.AI_HARNESS_WEB_APPROVE === "true",
@@ -925,11 +910,11 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
   if (url.pathname === "/api/health") {
     const envProvider = normalizeProvider(process.env.AI_PROVIDER);
-    const storedSettings = uiStateStore.getAll().providerSettings || {};
+    const storedSettings = uiStateStore.getSelectedProvider() || {};
     json(res, 200, {
       ok: true,
       provider: envProvider,
-      model: process.env.AI_MODEL || defaultModel(envProvider),
+      model: process.env.AI_MODEL || defaultModelForProvider(envProvider),
       ollamaModel: process.env.OLLAMA_MODEL || "llama3.1",
       ollamaBaseUrl: process.env.OLLAMA_BASE_URL || "http://localhost:11434",
       customModel: process.env.CUSTOM_AI_MODEL || "custom-model",
