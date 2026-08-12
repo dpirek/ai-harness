@@ -1,9 +1,16 @@
 import BaseComponent from "./base-component.js";
 
 class CassettePlayer extends BaseComponent {
-  constructor({ title = "Cassette Player", subtitle = "Response Renderer", step = "response", tokenCount = 0, handlers = {} } = {}) {
+  constructor({
+    title = "Cassette Player",
+    subtitle = "Response Renderer",
+    step = "response",
+    tokenCount = 0,
+    fileToolsEnabled = true,
+    handlers = {},
+  } = {}) {
     super();
-    this.props = { title, subtitle, step, tokenCount, handlers };
+    this.props = { title, subtitle, step, tokenCount, fileToolsEnabled, handlers };
   }
 
   connectedCallback() {
@@ -15,6 +22,13 @@ class CassettePlayer extends BaseComponent {
     this.tabIndex = 0;
     this.render();
     this.setTokenCount(this.props.tokenCount);
+    this.setFileToolsEnabled(this.props.fileToolsEnabled, false);
+    this.querySelector(".cassette-file-toggle")?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.setFileToolsEnabled(!this.props.fileToolsEnabled);
+    });
+    this.querySelector(".cassette-file-toggle")?.addEventListener("keydown", (event) => event.stopPropagation());
     for (const [eventName, handler] of Object.entries(this.props.handlers)) {
       if (typeof handler === "function") this.addEventListener(eventName, handler);
     }
@@ -104,6 +118,10 @@ class CassettePlayer extends BaseComponent {
         this.createElement("i", { class: "cassette-control-forward", textContent: "▶▶", title: "Fast forward", "aria-label": "Fast forward" }),
         this.createElement("i", { class: "cassette-control-record", textContent: "●", title: "Record", "aria-label": "Record" }),
       ] }),
+      this.createElement("button", { class: "cassette-file-toggle", type: "button", "aria-label": "Toggle file access tools", children: [
+        this.createElement("small", { textContent: "FILES" }),
+        this.createElement("strong", { textContent: "ON" }),
+      ] }),
     ]);
   }
 
@@ -116,6 +134,22 @@ class CassettePlayer extends BaseComponent {
     const display = this.querySelector(".cassette-token-counter strong");
     if (display) display.textContent = this.formatTokenCount();
     this.setAttribute("aria-label", `${this.props.title}: ${this.props.subtitle}; ${this.formatTokenCount()} output tokens`);
+  }
+
+  setFileToolsEnabled(fileToolsEnabled, emit = true) {
+    const value = fileToolsEnabled === true;
+    this.props.fileToolsEnabled = value;
+    this.classList.toggle("cassette-file-tools-disabled", !value);
+    const button = this.querySelector(".cassette-file-toggle");
+    button?.setAttribute("aria-pressed", String(value));
+    const state = button?.querySelector("strong");
+    if (state) state.textContent = value ? "ON" : "OFF";
+    if (emit) {
+      this.dispatchEvent(new CustomEvent("file-tools-toggle", {
+        bubbles: true,
+        detail: { enabled: value },
+      }));
+    }
   }
 }
 

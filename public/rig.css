@@ -495,6 +495,7 @@ body {
 }
 
 cassette-player.cassette-player-unit {
+  position: relative;
   display: flex;
   width: 300px;
   height: 242px;
@@ -704,8 +705,9 @@ cassette-player.cassette-player-unit:focus-visible {
 
 .cassette-transport {
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   margin: 5px 0 4px;
+  padding-left: 8px;
 }
 
 .cassette-transport i {
@@ -725,6 +727,60 @@ cassette-player.cassette-player-unit:focus-visible {
 .cassette-transport .cassette-control-record { color: #ef4b45; font-size: 11px; text-shadow: 0 0 5px #ef3025; }
 .cassette-transport .cassette-control-rewind,
 .cassette-transport .cassette-control-forward { font-size: 6px; letter-spacing: -2px; }
+
+.cassette-file-toggle {
+  position: absolute;
+  right: 14px;
+  bottom: 10px;
+  display: flex;
+  min-width: 54px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: 1px solid #303435;
+  border-radius: 6px;
+  background: linear-gradient(#495050, #262929);
+  color: #d8dbd5;
+  padding: 5px 6px;
+  box-shadow: inset 0 1px #ffffff24, 0 2px 3px #0005;
+  cursor: pointer;
+}
+
+.cassette-file-toggle small,
+.cassette-file-toggle strong {
+  display: block;
+  line-height: 1;
+}
+
+.cassette-file-toggle small {
+  font: 700 6px/1 ui-monospace, monospace;
+  letter-spacing: .08em;
+}
+
+.cassette-file-toggle strong {
+  font: 800 9px/1 ui-monospace, monospace;
+  color: #8bff93;
+  text-shadow: 0 0 4px #50d05a;
+}
+
+.cassette-file-toggle:hover {
+  filter: brightness(1.08);
+}
+
+.cassette-file-toggle:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+.cassette-file-tools-disabled .cassette-file-toggle strong {
+  color: #ff8b84;
+  text-shadow: 0 0 4px #d6423c;
+}
+
+cassette-player.cassette-player-unit.cassette-file-tools-disabled {
+  filter: grayscale(.78) brightness(.58);
+}
 
 .rig-chain cassette-player.process-active .cassette-control-play {
   background: #245a2b;
@@ -2977,6 +3033,10 @@ rig-io.io.io-active .signal-fill {
 }
 
 .token-history-table-panel {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
   overflow: hidden;
   border: 1px solid #3a4144;
   border-radius: 12px;
@@ -2984,11 +3044,15 @@ rig-io.io.io-active .signal-fill {
 }
 
 .token-history-table-toolbar {
+  flex: 0 0 auto;
   border-bottom: 1px solid #303739;
   padding: 16px 18px;
 }
 
 .token-history-table-wrap {
+  min-height: 0;
+  flex: 1 1 auto;
+  max-height: min(52vh, 420px);
   overflow: auto;
 }
 

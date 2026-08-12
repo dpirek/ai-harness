@@ -478,6 +478,35 @@ const toolChoices = [
   ["curl", "Curl", "Fetch HTTP or HTTPS URLs."],
   ["run_command", "Run commands", "Run shell commands in the workspace."],
 ];
+const fileAccessToolNames = ["list_files", "search_files", "read_file", "write_file"];
+
+const fileAccessToolsEnabled = (permissions = storedToolPermissions) => (
+  fileAccessToolNames.every((name) => permissions[name] === true)
+);
+
+const syncFileToolsSwitch = () => {
+  responseRenderer.setFileToolsEnabled(fileAccessToolsEnabled(storedToolPermissions), false);
+};
+
+const applyToolPermissions = async (nextPermissions, {
+  logMessage = "Tool permissions updated",
+} = {}) => {
+  if (runActive) throw new Error("Wait for the current run to finish before changing tools.");
+  storedToolPermissions = normalizeToolPermissions(nextPermissions);
+  syncFileToolsSwitch();
+  const active = activeRigConfiguration();
+  if (active) {
+    active.toolPermissions = { ...storedToolPermissions };
+    active.updatedAt = Date.now();
+  }
+  renderPresetsList();
+  await saveUiState({ toolPermissions: storedToolPermissions });
+  if (!socketService?.send({ type: "tool_permissions", permissions: storedToolPermissions })) {
+    throw new Error("The harness is offline.");
+  }
+  appendLog("TOOLS", logMessage);
+  return storedToolPermissions;
+};
 
 const createToolSettings = () => {
   const status = element("p", { className: "tool-selection-status", text: "Enabled tools are available to the model." });
@@ -505,26 +534,15 @@ const createToolSettings = () => {
     element("div", { className: "tool-selection-footer", children: [status, saveButton] }),
   ] });
   saveButton.addEventListener("click", async () => {
-    if (runActive) {
-      status.textContent = "Wait for the current run to finish before changing tools.";
-      return;
-    }
-    storedToolPermissions = normalizeToolPermissions(Object.fromEntries(
+    const nextPermissions = normalizeToolPermissions(Object.fromEntries(
       [...section.querySelectorAll("[data-tool-permission]")]
         .map((input) => [input.dataset.toolPermission, input.checked]),
     ));
     saveButton.disabled = true;
     status.textContent = "Applying tool selection…";
     try {
-      await saveUiState({ toolPermissions: storedToolPermissions });
-      const active = activeRigConfiguration();
-      if (active) active.toolPermissions = { ...storedToolPermissions };
-      renderPresetsList();
-      if (!socketService?.send({ type: "tool_permissions", permissions: storedToolPermissions })) {
-        throw new Error("The harness is offline.");
-      }
+      await applyToolPermissions(nextPermissions);
       status.textContent = "Tool selection applied.";
-      appendLog("TOOLS", "Tool permissions updated");
     } catch (error) {
       status.textContent = error.message;
     } finally {
@@ -1349,6 +1367,7 @@ const renderPresetsList = () => {
       writeStoredActiveRigConfigurationId(activeRigConfigurationId);
       modelSettings = normalizeRigProviderSettings(configuration.providerSettings, modelSettings);
       storedToolPermissions = normalizeToolPermissions(configuration.toolPermissions);
+      syncFileToolsSwitch();
       currentMcpConfigContent = configuration.mcpConfig || "";
       refreshSystemPromptCacheFromConfiguration(configuration);
       applyRigComponentState(configuration.componentState);
@@ -1488,6 +1507,7 @@ const deleteRigConfiguration = async (configurationId) => {
       writeStoredActiveRigConfigurationId(activeRigConfigurationId);
       modelSettings = normalizeRigProviderSettings(nextActiveConfiguration.providerSettings, modelSettings);
       storedToolPermissions = normalizeToolPermissions(nextActiveConfiguration.toolPermissions);
+      syncFileToolsSwitch();
       currentMcpConfigContent = nextActiveConfiguration.mcpConfig || "";
       refreshSystemPromptCacheFromConfiguration(nextActiveConfiguration);
       applyRigComponentState(nextActiveConfiguration.componentState);
@@ -1526,6 +1546,22 @@ document.addEventListener("effect-toggle", (event) => {
   persistRigConfigurationSelection();
   renderPresetsList();
   if (activeHarnessStage) setHarnessStage(activeHarnessStage);
+});
+
+document.addEventListener("file-tools-toggle", async (event) => {
+  const enabled = event.detail?.enabled === true;
+  const nextPermissions = {
+    ...storedToolPermissions,
+    ...Object.fromEntries(fileAccessToolNames.map((name) => [name, enabled])),
+  };
+  try {
+    await applyToolPermissions(nextPermissions, {
+      logMessage: `File access tools ${enabled ? "enabled" : "disabled"}`,
+    });
+  } catch (error) {
+    responseRenderer.setFileToolsEnabled(fileAccessToolsEnabled(storedToolPermissions), false);
+    appendLog("TOOLS", error.message, "log-error");
+  }
 });
 
 const updateFileEditorPreview = (filePath, content) => {
@@ -2626,6 +2662,7 @@ const initializePromptStream = async () => {
       runModelValue.textContent = modelSettings.model;
     }
     storedToolPermissions = normalizeToolPermissions(activeRigConfiguration()?.toolPermissions || state.toolPermissions);
+    syncFileToolsSwitch();
     currentMcpConfigContent = activeRigConfiguration()?.mcpConfig || "";
     applyRigComponentState(activeRigConfiguration()?.componentState);
   } catch (error) {
