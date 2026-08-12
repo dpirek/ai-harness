@@ -1,6 +1,8 @@
 import GuitarEffect from "/components/guitar-effect.js";
 import CassettePlayer from "/components/cassette-player.js";
 import ModelEngine from "/components/model-engine.js";
+import MusicSynth from "/components/music-synth.js";
+import "/components/music-synth.js";
 import Microphone from "/components/microphone.js";
 import MidiKeyboard from "/components/midi-keyboard.js";
 import WhisperModel from "/components/whisper-model.js";
@@ -293,6 +295,17 @@ const createEngine = () => new ModelEngine({
   },
 });
 
+const createSynth = () => new MusicSynth({
+  presetName: "Default Harness",
+  handlers: {
+    click: (event) => openStepPrompt(event.currentTarget),
+    keydown: openPromptWithKeyboard,
+    prevPreset: () => cycleRigPreset(-1),
+    nextPreset: () => cycleRigPreset(1),
+    toggleBypass: () => toggleWorkflowSynthBypass(),
+  },
+});
+
 const createChannel = (props) => new RigIO({
   ...props,
   handlers: {
@@ -329,6 +342,7 @@ const whisperModel = new WhisperModel({
 const inputChannel = createChannel({ title: "INPUT", tokenCount: 0, signalLevel: 0, direction: "input", color: "#e84431" });
 const inputComposer = createEffect({ color: "#e84431", icon: "wave", title: "Input", subtitle: "Composer", step: "composer" });
 const modelEngine = createEngine();
+const workflowSynth = createSynth();
 const toolOrchestrator = createEffect({ color: "#8a3abd", icon: "tools", title: "Tool", subtitle: "Orchestrator", step: "tools" });
 const mcpServers = createEffect({ color: "#168b83", icon: "server-rig", title: "MCP", subtitle: "Servers", step: "mcp" });
 const outputValidator = createEffect({ color: "#dca813", icon: "clip", title: "Evaluator", subtitle: "Suite", step: "validation" });
@@ -345,7 +359,7 @@ const signalUnits = [
   whisperModel,
   inputChannel,
   inputComposer,
-  modelEngine,
+  workflowSynth,
   toolOrchestrator,
   mcpServers,
   outputValidator,
@@ -364,7 +378,7 @@ const harnessStages = [
   { name: "capture", units: [microphone] },
   { name: "transcription", units: [whisperModel] },
   { name: "input", units: [inputChannel, inputComposer] },
-  { name: "model", units: [modelEngine] },
+  { name: "model", units: [workflowSynth] },
   { name: "tool", units: [toolOrchestrator] },
   { name: "mcp", units: [mcpServers] },
   { name: "validation", units: [outputValidator] },
@@ -433,7 +447,7 @@ const stepPromptConfig = new Map([
     suppressEmptyPromptMessage: true,
   }],
   [inputComposer, { title: "Input Composer", keys: ["prompt_refinement"] }],
-  [modelEngine, { title: "Model Engine", keys: ["agent_instructions"] }],
+  [workflowSynth, { title: "Workflow Synth", keys: ["agent_instructions"] }],
   [toolOrchestrator, { title: "Tool Orchestrator", keys: ["tool_contract"], showToolSettings: true }],
   [mcpServers, { title: "MCP Servers", keys: ["tool_contract"], showMcpSettings: true }],
   [outputValidator, { title: "Output Validation", keys: ["validation_reminder"] }],
@@ -898,6 +912,7 @@ saveModelConfigButton.addEventListener("click", async () => {
     }
     modelEngine.setModel(modelSettings.model);
     runModelValue.textContent = modelSettings.model;
+    syncWorkflowSynthDisplay();
     appendLog("MODEL", `${modelSettings.provider} · ${modelSettings.model}`);
     modelConfigModal.close();
   } catch (error) {
@@ -1280,12 +1295,29 @@ const activeRigConfiguration = () => (
 
 const updateCurrentPresetDisplay = () => {
   runPresetValue.textContent = activeRigConfiguration()?.name || "—";
+  syncWorkflowSynthDisplay();
 };
 
 const updateRunActivityDisplay = () => {
   const runCount = conversation.filter((message) => message.role === "user").length;
   const tokenCount = inputTokens + outputTokens;
   runActivityValue.textContent = `${runCount} run${runCount === 1 ? "" : "s"} · ${tokenCount.toLocaleString()} tok`;
+  syncWorkflowSynthDisplay();
+};
+
+const syncWorkflowSynthDisplay = () => {
+  const active = activeRigConfiguration();
+  const activeIndex = rigConfigurations.findIndex((configuration) => configuration.id === activeRigConfigurationId);
+  workflowSynth.setPreset(
+    String((activeIndex >= 0 ? activeIndex : 0) + 1).padStart(3, "0"),
+    active?.name || "Default Harness",
+  );
+  workflowSynth.setMasterLevel(Math.min(100, Math.max(12, Math.round((inputTokens + outputTokens) / 40))));
+  workflowSynth.setBypassed(
+    configurableEffectSteps.length > 0 && disabledEffectSteps().length === configurableEffectSteps.length,
+    false,
+  );
+  workflowSynth.setModel(modelSettings.model);
 };
 
 const currentEffectStates = () => effectStatesFromEffects(guitarEffects);
@@ -1322,6 +1354,50 @@ const refreshSystemPromptCacheFromConfiguration = (configuration) => {
     prompt.content = configuration.systemPrompts[key] ?? prompt.content;
   }
 };
+
+const activateRigConfigurationById = async (configurationId) => {
+  const configuration = rigConfigurations.find((item) => item.id === configurationId);
+  if (!configuration || runActive || configuration.id === activeRigConfigurationId) return false;
+  await persistRigConfigurationSelection();
+  activeRigConfigurationId = configuration.id;
+  writeStoredActiveRigConfigurationId(activeRigConfigurationId);
+  modelSettings = normalizeRigProviderSettings(configuration.providerSettings, modelSettings);
+  storedToolPermissions = normalizeToolPermissions(configuration.toolPermissions);
+  syncFileToolsSwitch();
+  currentMcpConfigContent = configuration.mcpConfig || "";
+  refreshSystemPromptCacheFromConfiguration(configuration);
+  applyRigComponentState(configuration.componentState);
+  modelEngine.setModel(modelSettings.model);
+  runModelValue.textContent = modelSettings.model;
+  renderPresetsList();
+  await persistRigConfigurationSelection();
+  if (socketService?.isOpen) {
+    socketService.send({ type: "provider_settings", ...modelSettings });
+    socketService.send({ type: "tool_permissions", permissions: storedToolPermissions });
+    socketService.send({ type: "reload_tools" });
+  }
+  appendLog("PRESET", `Preset selected: ${configuration.name}`);
+  return true;
+};
+
+function cycleRigPreset(direction) {
+  if (runActive || rigConfigurations.length < 2) return;
+  const currentIndex = rigConfigurations.findIndex((configuration) => configuration.id === activeRigConfigurationId);
+  const startIndex = currentIndex >= 0 ? currentIndex : 0;
+  const nextIndex = (startIndex + direction + rigConfigurations.length) % rigConfigurations.length;
+  activateRigConfigurationById(rigConfigurations[nextIndex]?.id);
+}
+
+function toggleWorkflowSynthBypass() {
+  const shouldBypass = disabledEffectSteps().length !== configurableEffectSteps.length;
+  guitarEffects.forEach((effect) => effect.setEnabled(!shouldBypass, false));
+  syncActiveRigConfigurationComponentState();
+  syncWorkflowSynthDisplay();
+  persistRigConfigurationSelection();
+  renderPresetsList();
+  appendLog("FLOW", shouldBypass ? "Workflow synth bypassed" : "Workflow synth engaged");
+  if (activeHarnessStage) setHarnessStage(activeHarnessStage);
+}
 
 const renderPresetsList = () => {
   presetsList.replaceChildren();
@@ -1360,28 +1436,6 @@ const renderPresetsList = () => {
         title: `Delete preset ${configuration.name}`,
       },
     });
-    const selectConfiguration = async () => {
-      if (runActive || configuration.id === activeRigConfigurationId) return;
-      await persistRigConfigurationSelection();
-      activeRigConfigurationId = configuration.id;
-      writeStoredActiveRigConfigurationId(activeRigConfigurationId);
-      modelSettings = normalizeRigProviderSettings(configuration.providerSettings, modelSettings);
-      storedToolPermissions = normalizeToolPermissions(configuration.toolPermissions);
-      syncFileToolsSwitch();
-      currentMcpConfigContent = configuration.mcpConfig || "";
-      refreshSystemPromptCacheFromConfiguration(configuration);
-      applyRigComponentState(configuration.componentState);
-      modelEngine.setModel(modelSettings.model);
-      runModelValue.textContent = modelSettings.model;
-      renderPresetsList();
-      await persistRigConfigurationSelection();
-      if (socketService?.isOpen) {
-        socketService.send({ type: "provider_settings", ...modelSettings });
-        socketService.send({ type: "tool_permissions", permissions: storedToolPermissions });
-        socketService.send({ type: "reload_tools" });
-      }
-      appendLog("PRESET", `Preset selected: ${configuration.name}`);
-    };
     const commitNameChange = async () => {
       const nextName = await renameRigConfiguration(configuration.id, nameInput.value);
       if (nextName) nameInput.value = nextName;
@@ -1414,13 +1468,13 @@ const renderPresetsList = () => {
     deleteButton.addEventListener("mousedown", (event) => event.stopPropagation());
     card.addEventListener("click", (event) => {
       if (event.target === nameInput || event.target === deleteButton) return;
-      selectConfiguration();
+      activateRigConfigurationById(configuration.id);
     });
     card.addEventListener("keydown", (event) => {
       if (event.target !== card) return;
       if (event.key !== "Enter" && event.key !== " ") return;
       event.preventDefault();
-      selectConfiguration();
+      activateRigConfigurationById(configuration.id);
     });
     card.append(deleteButton, nameInput, meta);
     presetsList.append(card);
@@ -1538,6 +1592,7 @@ const applyRigComponentState = (componentState = {}) => {
   if (shouldUseKeyboard !== (activeInputSource === midiKeyboard)) {
     toggleInputSource({ forceSource: normalized.inputSource, persistConfiguration: false, logChange: false });
   }
+  syncWorkflowSynthDisplay();
 };
 
 document.addEventListener("effect-toggle", (event) => {
@@ -2191,6 +2246,7 @@ const handleSocketMessage = (payload) => {
   if (payload.type === "ready") {
     modelEngine.setModel(payload.model);
     runModelValue.textContent = payload.model || "—";
+    syncWorkflowSynthDisplay();
     appendLog("READY", `${payload.provider} · ${payload.model}`, payload);
     return;
   }
@@ -2203,6 +2259,7 @@ const handleSocketMessage = (payload) => {
     }, modelSettings);
     modelEngine.setModel(payload.model);
     runModelValue.textContent = payload.model || "—";
+    syncWorkflowSynthDisplay();
     appendLog("MODEL", payload.model || "Model updated", payload);
     return;
   }

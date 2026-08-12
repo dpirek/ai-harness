@@ -2584,6 +2584,427 @@ whisper-model.whisper-model {
   flex: none;
 }
 
+.synth-slot {
+  display: block;
+  width: 420px;
+  height: 256px;
+  flex: none;
+}
+
+music-synth.synth {
+  display: block;
+  width: 420px;
+  height: 256px;
+  border: 2px solid #4a4b4a;
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 18% 16%, #2f312e 0, transparent 26%),
+    radial-gradient(circle at 70% 78%, #1f2121 0, transparent 30%),
+    repeating-linear-gradient(115deg, #ffffff05 0 1px, transparent 1px 5px),
+    linear-gradient(180deg, #171818, #0d0e0f 76%);
+  box-shadow: inset 0 0 0 1px #8c8a7f33, inset 0 0 0 3px #111214, 0 12px 18px #000d;
+  padding: 12px;
+  color: #edeae0;
+  cursor: pointer;
+  transition: filter 160ms ease, transform 160ms ease;
+}
+
+music-synth.synth:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 5px;
+}
+
+music-synth.synth.synth-active {
+  filter: brightness(1.08) drop-shadow(0 0 12px #f0c94f66);
+  transform: translateY(-3px);
+}
+
+.synth-main {
+  display: grid;
+  min-width: 0;
+  height: 100%;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+}
+
+.synth-brand {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid #2d2f2f;
+  border-radius: 9px;
+  background: linear-gradient(180deg, #161717, #0f1011);
+  box-shadow: inset 0 1px #ffffff12, inset 0 0 0 1px #000;
+  padding: 12px 14px 10px;
+}
+
+.synth-brand strong,
+.synth-brand small {
+  display: block;
+}
+
+.synth-brand strong {
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: .06em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.synth-brand small {
+  color: #a8a49a;
+  font: 500 7px/1.3 ui-monospace, monospace;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+}
+
+.synth-flow-panel {
+  border: 1px solid #2f3232;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #17191a, #0d0f10 82%);
+  box-shadow: inset 0 1px #ffffff10, inset 0 0 0 1px #000;
+}
+
+.synth-flow-panel {
+  display: grid;
+  min-height: 0;
+  padding: 14px 12px 14px;
+}
+
+.synth-flow-panel > header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  color: #d8d5ca;
+  font: 600 8px/1 ui-monospace, monospace;
+  letter-spacing: .16em;
+}
+
+.synth-flow-rule {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, #6c6f6f, #2a2d2d);
+  opacity: .8;
+}
+
+.synth-flow-sequence {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 56px 1fr 56px 1fr 56px 1fr 56px 1fr 56px;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.synth-flow-node {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  border: 1px solid #333738;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #121415, #090a0b);
+  box-shadow: inset 0 0 0 1px #000;
+  padding: 10px 6px 8px;
+  text-align: center;
+}
+
+.synth-flow-icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  margin: 0 auto;
+  border: 1px solid #000;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #1e2020, #111213);
+  box-shadow: inset 0 1px #ffffff10;
+}
+
+.synth-flow-icon span {
+  font: 700 9px/1 ui-monospace, monospace;
+  letter-spacing: .05em;
+}
+
+.synth-flow-node strong {
+  overflow: hidden;
+  font: 600 7px/1.1 ui-monospace, monospace;
+  letter-spacing: .12em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.synth-flow-connector {
+  display: block;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #8f63d1, #76b9ff 46%, #7de091);
+  box-shadow: 0 0 8px #9f84d466;
+}
+
+.synth-graph-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.synth-graph {
+  min-width: 0;
+  border: 1px solid #2f3232;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #111314, #0a0c0d);
+  box-shadow: inset 0 1px #ffffff0c, inset 0 0 0 1px #000;
+  overflow: hidden;
+}
+
+.synth-graph-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 18px;
+  padding: 0 6px;
+  border-bottom: 1px solid #252828;
+  background: linear-gradient(180deg, #17191a, #0f1011);
+}
+
+.synth-graph-head span {
+  overflow: hidden;
+  color: #ece8dc;
+  font: 700 5px/1 ui-monospace, monospace;
+  letter-spacing: .12em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.synth-graph-screen {
+  aspect-ratio: 1 / 0.68;
+  padding: 5px;
+  background:
+    linear-gradient(180deg, rgba(77, 144, 214, 0.12), transparent 55%),
+    linear-gradient(180deg, #101416, #0a0d10);
+}
+
+.synth-graph-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.synth-graph-line {
+  stroke: #6eb7ff;
+  stroke-width: 2.6;
+  filter: drop-shadow(0 0 3px rgba(110, 183, 255, 0.4));
+}
+
+.synth-graph-dot {
+  fill: #d9eeff;
+  filter: drop-shadow(0 0 2px rgba(217, 238, 255, 0.65));
+}
+
+.synth-graph-fill-edge {
+  opacity: .85;
+}
+
+.synth-graph.synth-prompt {
+  border-color: #9155d0;
+  box-shadow: inset 0 0 0 1px #4e2c6d, inset 0 1px #ffffff0c, inset 0 0 0 1px #000;
+}
+
+.synth-graph.synth-llm {
+  border-color: #468ae8;
+  box-shadow: inset 0 0 0 1px #203f69, inset 0 1px #ffffff0c, inset 0 0 0 1px #000;
+}
+
+.synth-graph.synth-tool {
+  border-color: #56c971;
+  box-shadow: inset 0 0 0 1px #244e2b, inset 0 1px #ffffff0c, inset 0 0 0 1px #000;
+}
+
+.synth-graph.synth-output {
+  border-color: #af67e8;
+  box-shadow: inset 0 0 0 1px #5d3378, inset 0 1px #ffffff0c, inset 0 0 0 1px #000;
+}
+
+.synth-graph.synth-prompt .synth-graph-line {
+  stroke: #c07bff;
+  filter: drop-shadow(0 0 3px rgba(192, 123, 255, 0.4));
+}
+
+.synth-graph.synth-tool .synth-graph-line {
+  stroke: #6ce28e;
+  filter: drop-shadow(0 0 3px rgba(108, 226, 142, 0.35));
+}
+
+.synth-macro-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.synth-macro {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.synth-knob,
+.synth-master-knob {
+  position: relative;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 38% 32%, #26292a, #111213 48%, #030404 100%);
+  box-shadow: inset 0 0 0 2px #313536, inset 0 1px #ffffff10, 0 5px 8px #000b;
+}
+
+.synth-knob {
+  width: 25px;
+  height: 25px;
+}
+
+.synth-knob::before,
+.synth-master-knob::before {
+  content: "";
+  position: absolute;
+  inset: -7px;
+  border-radius: 50%;
+  background:
+    conic-gradient(from 180deg,
+      transparent 0deg 24deg,
+      #686c6d 24deg 28deg,
+      transparent 28deg 52deg,
+      #686c6d 52deg 56deg,
+      transparent 56deg 80deg,
+      #686c6d 80deg 84deg,
+      transparent 84deg 108deg,
+      #686c6d 108deg 112deg,
+      transparent 112deg 136deg,
+      #686c6d 136deg 140deg,
+      transparent 140deg 164deg,
+      #686c6d 164deg 168deg,
+      transparent 168deg 192deg,
+      #686c6d 192deg 196deg,
+      transparent 196deg 220deg,
+      #686c6d 220deg 224deg,
+      transparent 224deg 248deg,
+      #686c6d 248deg 252deg,
+      transparent 252deg 276deg,
+      #686c6d 276deg 280deg,
+      transparent 280deg 304deg,
+      #686c6d 304deg 308deg,
+      transparent 308deg 332deg,
+      #686c6d 332deg 336deg,
+      transparent 336deg 360deg);
+  -webkit-mask: radial-gradient(circle, transparent 58%, #000 59%);
+  mask: radial-gradient(circle, transparent 58%, #000 59%);
+  opacity: .7;
+}
+
+.synth-knob-cap,
+.synth-master-cap {
+  position: absolute;
+  top: 5px;
+  left: 50%;
+  width: 2px;
+  border-radius: 999px;
+  background: #f2efe5;
+  box-shadow: 0 0 4px #fff7;
+  transform: translateX(-50%);
+}
+
+.synth-knob-cap {
+  height: 11px;
+}
+
+.synth-master-cap {
+  height: 27px;
+}
+
+.synth-macro small {
+  color: #c5c1b4;
+  font: 600 6px/1 ui-monospace, monospace;
+  letter-spacing: .12em;
+}
+
+.synth-flow-node.synth-prompt {
+  color: #d9a6ff;
+  border-color: #9155d0;
+  box-shadow: inset 0 0 0 1px #4e2c6d;
+}
+
+.synth-flow-node.synth-prompt,
+.synth-flow-node.synth-llm,
+.synth-flow-node.synth-tool,
+.synth-flow-node.synth-output {
+  padding: 10px 10px 5px 10px;
+}
+
+.synth-prompt .synth-flow-icon span,
+.synth-prompt .synth-rack-led {
+  color: #bc74ff;
+  background: #bc74ff;
+}
+
+.synth-flow-node.synth-llm {
+  color: #8bc2ff;
+  border-color: #468ae8;
+  box-shadow: inset 0 0 0 1px #203f69;
+}
+
+.synth-llm .synth-flow-icon span,
+.synth-llm .synth-rack-led {
+  color: #69a8ff;
+  background: #69a8ff;
+}
+
+.synth-flow-node.synth-tool {
+  color: #94eca4;
+  border-color: #56c971;
+  box-shadow: inset 0 0 0 1px #244e2b;
+}
+
+.synth-tool .synth-flow-icon span,
+.synth-tool .synth-rack-led {
+  color: #67d984;
+  background: #67d984;
+}
+
+.synth-flow-node.synth-output {
+  color: #dca7ff;
+  border-color: #af67e8;
+  box-shadow: inset 0 0 0 1px #5d3378;
+}
+
+.synth-output .synth-flow-icon span,
+.synth-output .synth-rack-led {
+  color: #c176ff;
+  background: #c176ff;
+}
+
+music-synth.synth.synth-bypassed {
+  filter: grayscale(.78) brightness(.58);
+}
+
+.rig-chain music-synth.process-active,
+.rig-chain music-synth.process-complete {
+  filter: brightness(1.1) saturate(1.05);
+}
+
+.rig-chain music-synth.process-active .synth-flow-connector,
+.rig-chain music-synth.process-active .synth-flow-icon,
+.rig-chain music-synth.process-active .synth-knob {
+  animation: synth-meter-pulse 520ms ease-in-out infinite alternate;
+}
+
+@keyframes synth-meter-pulse {
+  from { opacity: .72; filter: brightness(.92); }
+  to { opacity: 1; filter: brightness(1.18); }
+}
+
 model-engine.engine {
   cursor: pointer;
   transition: filter 160ms ease, transform 160ms ease;
@@ -4030,6 +4451,7 @@ rig-io.io.io-active .signal-fill {
 }
 
 .topbar .brand {
+  font-variant: small-caps; /* all caps */
   grid-area: brand;
   gap: 10px;
   font-size: clamp(20px, 1.65vw, 28px);
