@@ -4,6 +4,7 @@ function createSession(title = "New chat", workspace = ".") {
     title,
     messages: [],
     events: [],
+    tokenHistory: [],
     workspace,
     updatedAt: Date.now(),
   };

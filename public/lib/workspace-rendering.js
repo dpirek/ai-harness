@@ -1,3 +1,5 @@
+import { workspaceExplorerIcon } from "./icons.js";
+
 const FILE_ICONS = {
   js: "JS", mjs: "JS", cjs: "JS", json: "{}", html: "‹›", css: "#",
   md: "ⓘ", png: "▧", jpg: "▧", jpeg: "▧", svg: "◇",
@@ -11,7 +13,7 @@ function renderWorkspaceNodes(nodes, parent, { onOpenFile, onSelectFolder }) {
       summary.setAttribute("aria-expanded", "false");
       details.addEventListener("toggle", () => summary.setAttribute("aria-expanded", String(details.open)));
       const chevron = document.createElement("span"); chevron.className = "treeChevron"; chevron.textContent = "›";
-      const icon = document.createElement("span"); icon.className = "treeIcon"; icon.textContent = "▱";
+      const icon = workspaceExplorerIcon("workspaceExplorerIcon treeIcon");
       const name = document.createElement("span"); name.className = "workspaceFileName"; name.textContent = node.name;
       const select = document.createElement("button"); select.type = "button"; select.className = "selectFolderButton";
       select.textContent = "✓"; select.title = `Use ${node.name} as workspace`; select.setAttribute("aria-label", select.title);
@@ -48,8 +50,9 @@ function renderWorkspacePicker(element, rootPath, nodes, { onChoose, onConfirm }
       const details = document.createElement("details");
       const summary = document.createElement("summary"); summary.className = "workspacePickerOption";
       summary.dataset.path = node.path; summary.setAttribute("aria-expanded", "false");
-      summary.innerHTML = '<span class="workspacePickerChevron" aria-hidden="true">›</span><span aria-hidden="true">▱</span><span></span>';
-      summary.lastElementChild.textContent = node.name;
+      const chevron = document.createElement("span"); chevron.className = "workspacePickerChevron"; chevron.setAttribute("aria-hidden", "true"); chevron.textContent = "›";
+      const name = document.createElement("span"); name.textContent = node.name;
+      summary.append(chevron, workspaceExplorerIcon(), name);
       summary.addEventListener("click", () => onChoose(node.path));
       summary.addEventListener("dblclick", () => { onChoose(node.path); onConfirm(); });
       details.addEventListener("toggle", () => summary.setAttribute("aria-expanded", String(details.open)));
@@ -59,7 +62,8 @@ function renderWorkspacePicker(element, rootPath, nodes, { onChoose, onConfirm }
     }
   };
   const root = document.createElement("button"); root.type = "button"; root.className = "workspacePickerOption";
-  root.dataset.path = rootPath; root.textContent = `▱  ${rootPath.split("/").pop() || rootPath}`;
+  root.dataset.path = rootPath;
+  root.append(workspaceExplorerIcon(), document.createTextNode(rootPath.split("/").pop() || rootPath));
   root.addEventListener("click", () => onChoose(rootPath));
   element.append(root); renderNodes(nodes, element);
 }

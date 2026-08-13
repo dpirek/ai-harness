@@ -1,10 +1,20 @@
+const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
+const SVG_TAGS = new Set([
+  'circle', 'defs', 'ellipse', 'g', 'line', 'lineargradient', 'path', 'pattern',
+  'polygon', 'polyline', 'rect', 'stop', 'svg', 'symbol', 'text', 'use'
+]);
+
 class BaseComponent extends HTMLElement {
   constructor() {
     super();
   }
 
   createElement(tag, props) {
-    const element = (typeof tag === 'string')? document.createElement(tag) : tag;
+    const element = (typeof tag === 'string')
+      ? (SVG_TAGS.has(tag.toLowerCase())
+          ? document.createElementNS(SVG_NAMESPACE, tag)
+          : document.createElement(tag))
+      : tag;
   
     if(props) {
       for (let key in props) {

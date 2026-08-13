@@ -1,8 +1,12 @@
+import { appendMessageText } from "./message-rendering.js";
+
 function formatJson(value) {
   return JSON.stringify(value, null, 2);
 }
 
 function describeAgentEvent(event) {
+  if (event.type === "composer_start") return `Input Composer refining with ${event.model}`;
+  if (event.type === "composer_complete") return `Input Composer refined prompt: ${event.refinedPrompt}`;
   if (event.type === "start") return "Run started";
   if (event.type === "turn") return `Model turn ${event.turn}`;
   if (event.type === "response") return `Response ${event.id}`;
@@ -39,9 +43,106 @@ function eventIcon(title) {
   return "·";
 }
 
-function appendEvent(element, { title, detail, timestamp }) {
+let promptDetailModal = null;
+let promptDetailModalTitle = null;
+let promptDetailModalContent = null;
+
+function ensurePromptDetailModal() {
+  if (promptDetailModal) return promptDetailModal;
+  promptDetailModalTitle = document.createElement("h2");
+  promptDetailModalTitle.id = "eventPromptDetailTitle";
+  promptDetailModalTitle.textContent = "Prompt details";
+
+  const closeButton = document.createElement("button");
+  closeButton.className = "eventPromptModalClose";
+  closeButton.type = "button";
+  closeButton.textContent = "×";
+  closeButton.setAttribute("aria-label", "Close prompt details");
+
+  promptDetailModalContent = document.createElement("div");
+  promptDetailModalContent.className = "eventPromptModalContent";
+
+  const panel = document.createElement("section");
+  panel.className = "eventPromptModalPanel";
+  panel.append(
+    Object.assign(document.createElement("header"), { className: "eventPromptModalHeader" }),
+    promptDetailModalContent,
+  );
+  panel.firstChild.append(promptDetailModalTitle, closeButton);
+
+  promptDetailModal = document.createElement("dialog");
+  promptDetailModal.className = "eventPromptModal";
+  promptDetailModal.setAttribute("aria-labelledby", "eventPromptDetailTitle");
+  promptDetailModal.append(panel);
+  document.body.append(promptDetailModal);
+
+  closeButton.addEventListener("click", () => promptDetailModal.close());
+  promptDetailModal.addEventListener("click", (event) => {
+    if (event.target === promptDetailModal) promptDetailModal.close();
+  });
+  return promptDetailModal;
+}
+
+function extractTextInputs(input = []) {
+  const entries = [];
+  for (const item of Array.isArray(input) ? input : []) {
+    const role = item?.role === "assistant" ? "Assistant" : item?.role === "system" ? "System" : "User";
+    const texts = (Array.isArray(item?.content) ? item.content : [])
+      .filter((content) => content?.type === "input_text" && typeof content.text === "string" && content.text.trim())
+      .map((content) => content.text.trim());
+    if (texts.length) entries.push({ label: `${role} input`, value: texts.join("\n\n") });
+  }
+  return entries;
+}
+
+function buildPromptDetailSections(detail = {}) {
+  const sections = [];
+  if (typeof detail.prompt === "string" && detail.prompt.trim()) {
+    sections.push({ title: "Prompt", value: detail.prompt.trim() });
+  }
+  if (typeof detail.originalPrompt === "string" && detail.originalPrompt.trim()) {
+    sections.push({ title: "Original prompt", value: detail.originalPrompt.trim() });
+  }
+  if (typeof detail.refinedPrompt === "string" && detail.refinedPrompt.trim()) {
+    sections.push({ title: "Refined prompt", value: detail.refinedPrompt.trim() });
+  }
+  if (detail.inputPrompt && typeof detail.inputPrompt === "object") {
+    if (typeof detail.inputPrompt.instructions === "string" && detail.inputPrompt.instructions.trim()) {
+      sections.push({ title: "Instructions", value: detail.inputPrompt.instructions.trim() });
+    }
+    sections.push(...extractTextInputs(detail.inputPrompt.input));
+    sections.push({
+      title: "Request JSON",
+      value: `\`\`\`json\n${formatJson(detail.inputPrompt)}\n\`\`\``,
+    });
+  }
+  return sections;
+}
+
+function showPromptDetails(title, detail) {
+  const sections = buildPromptDetailSections(detail);
+  if (!sections.length) return;
+  const modal = ensurePromptDetailModal();
+  promptDetailModalTitle.textContent = title;
+  promptDetailModalContent.replaceChildren(...sections.map((section) => {
+    const article = document.createElement("article");
+    article.className = "eventPromptModalSection";
+    const heading = document.createElement("h3");
+    heading.textContent = section.title;
+    const body = document.createElement("div");
+    body.className = "eventPromptModalBody";
+    appendMessageText(body, section.value);
+    article.append(heading, body);
+    return article;
+  }));
+  if (!modal.open) modal.showModal();
+}
+
+function appendEvent(element, { title, detail, timestamp, className = "", open = false }) {
   const item = document.createElement("li");
+  if (className) item.className = className;
   const disclosure = document.createElement("details");
+  disclosure.open = open;
   const summary = document.createElement("summary");
   const icon = document.createElement("span");
   icon.className = "eventIcon";
@@ -68,9 +169,27 @@ function appendEvent(element, { title, detail, timestamp }) {
   const pre = document.createElement("pre");
   pre.textContent = formatJson({ type: title, ...(detail !== undefined ? { detail } : {}) });
   disclosure.append(summary, pre);
+
+  if (buildPromptDetailSections(detail).length) {
+    const actions = document.createElement("div");
+    actions.className = "eventActions";
+    const detailsButton = document.createElement("button");
+    detailsButton.type = "button";
+    detailsButton.className = "eventDetailButton";
+    detailsButton.textContent = "Show prompt details";
+    detailsButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      showPromptDetails(title, detail);
+    });
+    actions.append(detailsButton);
+    disclosure.append(actions);
+  }
+
   item.append(disclosure);
   element.append(item);
   element.scrollTop = element.scrollHeight;
+  return item;
 }
 
 function renderEventList(element, events) {

@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { effectStatesFromEffects, normalizeRigComponentState } from "../public/lib/rig-presets.js";
 import { mcpBlocks, quoteToml, setToolBlockEnabled } from "../public/lib/mcp-config.js";
 import { defaultProviderSettings, normalizeToolPermissions } from "../public/lib/settings.js";
 import { promptHistoryFromSessions, titleFromPrompt } from "../public/lib/sessions.js";
@@ -48,4 +49,29 @@ server_url = "https://example.com/mcp"`;
   assert.equal(block.enabled, true);
   assert.match(setToolBlockEnabled(config, block, false), /^# \[\[mcp\.servers\]\]/);
   assert.equal(quoteToml('a\\b"c'), 'a\\\\b\\"c');
+});
+
+test("rig preset helpers preserve component switches before elements connect", () => {
+  const effects = [
+    { props: { step: "composer" }, enabled: false, dataset: {} },
+    { props: { step: "tools" }, enabled: true, dataset: {} },
+    { props: { step: "mcp" }, enabled: false, dataset: {} },
+    { props: { step: "validation" }, enabled: true, dataset: {} },
+  ];
+
+  const state = normalizeRigComponentState({
+    inputSource: "keyboard",
+    effects: effectStatesFromEffects(effects),
+  });
+
+  assert.deepEqual(state, {
+    inputSource: "keyboard",
+    modelDisplay: "engine",
+    effects: {
+      composer: false,
+      tools: true,
+      mcp: false,
+      validation: true,
+    },
+  });
 });

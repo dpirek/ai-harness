@@ -39,6 +39,31 @@ test("environment instructions identify the workspace and enabled tools", () => 
   assert.match(instructions, /Do not report a\s+task as complete until you have validated its outcome/);
 });
 
+test("agent appends selected skill content to model instructions", async () => {
+  const requests = [];
+  const agent = new CodingAgent({
+    client: {
+      async createResponse(body) {
+        requests.push(body);
+        return { id: "resp_1", output_text: "Done." };
+      },
+    },
+    tools: [],
+    model: "test-model",
+    root: "/workspace",
+    skills: [{
+      id: "github/gh-fix-ci",
+      name: "gh-fix-ci",
+      content: "# gh-fix-ci\nInspect failing CI checks before editing.",
+    }],
+  });
+
+  assert.equal(await agent.run("fix CI"), "Done.");
+  assert.match(requests[0].instructions, /Selected skill guides:/);
+  assert.match(requests[0].instructions, /Skill: gh-fix-ci/);
+  assert.match(requests[0].instructions, /Inspect failing CI checks before editing/);
+});
+
 test("agent executes a function call and returns final text", async () => {
   const requests = [];
   const responses = [
@@ -87,6 +112,70 @@ test("agent executes a function call and returns final text", async () => {
     call_id: "call_1",
     output: '{"ok":true,"value":"hello"}',
   }]);
+});
+
+test("input composer refines a prompt without changing agent conversation state", async () => {
+  const requests = [];
+  const events = [];
+  const agent = new CodingAgent({
+    client: {
+      async createResponse(body) {
+        requests.push(body);
+        return { id: "composer_1", output_text: "List every project file and group the results by directory." };
+      },
+    },
+    tools: [],
+    model: "test-model",
+    root: "/workspace",
+    onEvent(event) { events.push(event); },
+  });
+
+  assert.equal(
+    await agent.refinePrompt("can you list files in the project?"),
+    "List every project file and group the results by directory.",
+  );
+  assert.equal(requests[0].model, "test-model");
+  assert.match(requests[0].instructions, /Rewrite the user's request/);
+  assert.equal(agent.previousResponseId, null);
+  assert.deepEqual(events.map((event) => event.type), ["composer_start", "composer_complete"]);
+});
+
+test("agent never exposes or executes local tools disabled for a run", async () => {
+  const requests = [];
+  let executed = false;
+  const responses = [
+    {
+      id: "resp_1",
+      output: [{
+        type: "function_call",
+        name: "list_files",
+        call_id: "call_1",
+        arguments: "{}",
+      }],
+    },
+    { id: "resp_2", output_text: "Tools are bypassed." },
+  ];
+  const agent = new CodingAgent({
+    client: {
+      async createResponse(body) {
+        requests.push(body);
+        return responses.shift();
+      },
+    },
+    tools: [{
+      name: "list_files",
+      description: "List files.",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+      async execute() { executed = true; return { ok: true }; },
+    }],
+    model: "test-model",
+    root: "/workspace",
+  });
+
+  assert.equal(await agent.run("list files", { disabledSteps: ["tools"] }), "Tools are bypassed.");
+  assert.deepEqual(requests[0].tools, []);
+  assert.equal(executed, false);
+  assert.match(requests[1].input[0].output, /Unknown tool/);
 });
 
 test("agent rejects completion until a successful validation follows a mutation", async () => {
@@ -148,6 +237,45 @@ test("agent rejects completion until a successful validation follows a mutation"
     events.filter((event) => event.type === "validation").map((event) => event.status),
     ["pending", "required", "passed"],
   );
+});
+
+test("agent skips mutation validation when the validation step is disabled", async () => {
+  const requests = [];
+  const events = [];
+  const responses = [
+    {
+      id: "resp_1",
+      output: [{
+        type: "function_call",
+        name: "write_file",
+        call_id: "write_1",
+        arguments: '{"path":"src/app.js"}',
+      }],
+    },
+    { id: "resp_2", output_text: "Done without validation." },
+  ];
+  const agent = new CodingAgent({
+    client: {
+      async createResponse(body) {
+        requests.push(body);
+        return responses.shift();
+      },
+    },
+    tools: [{
+      name: "write_file",
+      mutatesWorkspace: true,
+      parameters: { type: "object", properties: {}, additionalProperties: true },
+      async execute(args) { return { ok: true, path: args.path }; },
+    }],
+    model: "test-model",
+    root: "/workspace",
+    disabledSteps: ["validation"],
+    onEvent(event) { events.push(event); },
+  });
+
+  assert.equal(await agent.run("change it"), "Done without validation.");
+  assert.equal(requests.length, 2);
+  assert.equal(events.some((event) => event.type === "validation"), false);
 });
 
 test("agent passes MCP tool definitions through to the API", async () => {

@@ -5,12 +5,18 @@ import fs from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadEnv } from "./lib/env.js";
 import { createModelClient } from "./lib/openai.js";
 import { CodingAgent } from "./lib/agent.js";
+import { createSkillOnDisk, loadSkillsFromDisk } from "./lib/skills.js";
 import { createTools } from "./lib/tools.js";
 import { loadMcpTools } from "./lib/mcp.js";
 import { createUiStateStore } from "./lib/ui-state.js";
+import {
+  defaultBaseUrlForProvider,
+  defaultModelForProvider,
+  normalizeProvider,
+  resolveProviderApiKey,
+} from "./lib/provider-config.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, "public");
@@ -19,15 +25,16 @@ const databaseDir = path.join(process.cwd(), "db");
 const uiStateDatabasePath = path.join(databaseDir, "ui-state.sqlite");
 const legacyUiStateDatabasePath = path.join(process.cwd(), ".ai-harness/ui-state.sqlite");
 
-loadEnv(path.join(__dirname, ".env"));
 const port = Number(process.env.PORT || 3000);
 await fs.mkdir(databaseDir, { recursive: true });
 let databaseExists = true;
+
 try {
   await fs.access(uiStateDatabasePath);
 } catch {
   databaseExists = false;
 }
+
 if (!databaseExists) {
   for (const suffix of ["", "-wal", "-shm"]) {
     try {
@@ -38,6 +45,7 @@ if (!databaseExists) {
   }
 }
 const uiStateStore = createUiStateStore(uiStateDatabasePath);
+
 if (uiStateStore.getMcpConfig() === undefined) {
   try {
     uiStateStore.setMcpConfig(await fs.readFile(configPath, "utf8"));
@@ -60,6 +68,9 @@ const WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const MAX_WEBSOCKET_TEXT_BYTES = 40 * 1024 * 1024;
 const providerSettings = new Map();
 const toolPermissions = new Map();
+let skillsSyncPromise = null;
+
+await syncSkillsFromDisk();
 
 const DEFAULT_TOOL_PERMISSIONS = {
   list_files: true,
@@ -79,23 +90,6 @@ function normalizeToolPermissions(value = {}) {
   );
 }
 
-function normalizeProvider(value) {
-  if (value === "ollama" || value === "custom") return value;
-  return "openai";
-}
-
-function defaultModel(provider) {
-  if (provider === "ollama") return process.env.OLLAMA_MODEL || "llama3.1";
-  if (provider === "custom") return process.env.CUSTOM_AI_MODEL || "custom-model";
-  return process.env.OPENAI_MODEL || "gpt-5.1-codex";
-}
-
-function defaultBaseUrl(provider) {
-  if (provider === "ollama") return process.env.OLLAMA_BASE_URL || "http://localhost:11434";
-  if (provider === "custom") return process.env.CUSTOM_AI_BASE_URL || "http://localhost:8000/v1";
-  return process.env.OPENAI_BASE_URL || "";
-}
-
 function json(res, status, payload) {
   const body = JSON.stringify(payload);
   res.writeHead(status, {
@@ -103,6 +97,17 @@ function json(res, status, payload) {
     "content-length": Buffer.byteLength(body),
   });
   res.end(body);
+}
+
+async function syncSkillsFromDisk() {
+  if (!skillsSyncPromise) {
+    skillsSyncPromise = loadSkillsFromDisk()
+      .then((skills) => uiStateStore.syncSkills(skills))
+      .finally(() => {
+        skillsSyncPromise = null;
+      });
+  }
+  return skillsSyncPromise;
 }
 
 async function readRequestBody(req, limit = 250_000) {
@@ -180,10 +185,8 @@ async function handleModelsApi(req, res) {
       return;
     }
 
-    const origin = (baseUrl || defaultBaseUrl(provider) || "https://api.openai.com/v1").replace(/\/$/, "");
-    const bearer = provider === "custom"
-      ? apiKey || process.env.CUSTOM_AI_API_KEY || ""
-      : apiKey;
+    const origin = (baseUrl || defaultBaseUrlForProvider(provider) || "https://api.openai.com/v1").replace(/\/$/, "");
+    const bearer = resolveProviderApiKey(provider, apiKey);
     if (provider === "openai" && !bearer) {
       json(res, 400, { ok: false, error: "Save an OpenAI API key in Provider settings first." });
       return;
@@ -233,6 +236,25 @@ async function handleUiStateApi(req, res) {
   res.end();
 }
 
+async function handleRigConfigurationsApi(req, res) {
+  if (req.method === "GET") {
+    json(res, 200, { ok: true, ...uiStateStore.getRigConfigurations() });
+    return;
+  }
+  if (req.method === "PUT") {
+    try {
+      const body = JSON.parse(await readRequestBody(req, 250_000) || "{}");
+      const result = uiStateStore.setRigConfigurations(body.configurations, body.activeConfigurationId);
+      json(res, 200, { ok: true, ...result });
+    } catch (error) {
+      json(res, 400, { ok: false, error: error.message });
+    }
+    return;
+  }
+  res.writeHead(405, { allow: "GET, PUT" });
+  res.end();
+}
+
 async function handleSystemPromptsApi(req, res) {
   if (req.method === "GET") {
     json(res, 200, { ok: true, prompts: uiStateStore.getSystemPromptRows() });
@@ -252,6 +274,63 @@ async function handleSystemPromptsApi(req, res) {
     return;
   }
   res.writeHead(405, { allow: "GET, PUT" }); res.end();
+}
+
+async function handleSkillsApi(req, res) {
+  if (req.method === "GET") {
+    try {
+      json(res, 200, { ok: true, skills: await syncSkillsFromDisk() });
+    } catch (error) {
+      json(res, 400, { ok: false, error: error.message });
+    }
+    return;
+  }
+  if (req.method === "POST") {
+    try {
+      const body = JSON.parse(await readRequestBody(req, 2_100_000) || "{}");
+      if (typeof body.name !== "string") throw new Error("Expected skill name.");
+      const created = await createSkillOnDisk({
+        name: body.name,
+        content: typeof body.content === "string" ? body.content : "",
+      });
+      const skills = await syncSkillsFromDisk();
+      json(res, 200, {
+        ok: true,
+        skill: skills.find((entry) => entry.id === created.id) || created,
+        skills,
+      });
+    } catch (error) {
+      json(res, 400, { ok: false, error: error.message });
+    }
+    return;
+  }
+  if (req.method === "PUT") {
+    try {
+      const body = JSON.parse(await readRequestBody(req, 2_100_000) || "{}");
+      if (Array.isArray(body.selectedSkillIds)) {
+        json(res, 200, { ok: true, skills: uiStateStore.setSelectedSkills(body.selectedSkillIds) });
+        return;
+      }
+      if (typeof body.skillId === "string" && typeof body.content === "string") {
+        const skill = uiStateStore.getSkills().find((entry) => entry.id === body.skillId);
+        if (!skill) throw new Error(`Unknown skill: ${body.skillId}`);
+        await fs.writeFile(skill.sourcePath, body.content, "utf8");
+        const skills = await syncSkillsFromDisk();
+        json(res, 200, {
+          ok: true,
+          skill: skills.find((entry) => entry.id === body.skillId) || null,
+          skills,
+        });
+        return;
+      }
+      throw new Error("Expected selected skill ids or skill content.");
+    } catch (error) {
+      json(res, 400, { ok: false, error: error.message });
+    }
+    return;
+  }
+  res.writeHead(405, { allow: "GET, POST, PUT" });
+  res.end();
 }
 
 async function workspaceTree(root, limit = 2500) {
@@ -324,6 +403,66 @@ async function handleWorkspaceFileApi(req, res, url) {
       return;
     }
     res.writeHead(405, { allow: "GET, PUT" }); res.end();
+  } catch (error) {
+    json(res, 400, { ok: false, error: error.message });
+  }
+}
+
+async function handleWorkspaceRecordingApi(req, res) {
+  if (req.method !== "POST") { res.writeHead(405, { allow: "POST" }); res.end(); return; }
+  try {
+    const body = JSON.parse(await readRequestBody(req, 34_000_000) || "{}");
+    const formats = new Map([
+      ["audio/webm", "webm"],
+      ["audio/webm;codecs=opus", "webm"],
+      ["audio/ogg", "ogg"],
+      ["audio/ogg;codecs=opus", "ogg"],
+      ["audio/mp4", "m4a"],
+    ]);
+    const extension = formats.get(body.mimeType);
+    if (!extension || typeof body.data !== "string") throw new Error("Unsupported microphone recording format.");
+    if (!/^[A-Za-z0-9+/]*={0,2}$/.test(body.data)) throw new Error("Invalid recording data.");
+    const recording = Buffer.from(body.data, "base64");
+    if (!recording.length) throw new Error("The microphone recording is empty.");
+    if (recording.length > 24_000_000) throw new Error("Recording is too large (24 MB maximum).");
+    const root = await resolveWorkspace(body.workspace);
+    const directory = path.join(root, "recordings");
+    await fs.mkdir(directory, { recursive: true });
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const file = path.join(directory, `microphone-${timestamp}.${extension}`);
+    await fs.writeFile(file, recording);
+    json(res, 200, { ok: true, path: file, relativePath: path.relative(root, file), size: recording.length });
+  } catch (error) {
+    json(res, 400, { ok: false, error: error.message });
+  }
+}
+
+async function handleWorkspaceTranscriptionApi(req, res) {
+  if (req.method !== "POST") { res.writeHead(405, { allow: "POST" }); res.end(); return; }
+  try {
+    const body = JSON.parse(await readRequestBody(req, 100_000) || "{}");
+    const { file, stat } = await resolveWorkspaceFile(body.workspace, body.path);
+    const supportedExtensions = new Set([".webm", ".ogg", ".mp4", ".m4a", ".wav", ".mp3", ".mpeg", ".mpga", ".flac"]);
+    if (!supportedExtensions.has(path.extname(file).toLowerCase())) throw new Error("Unsupported transcription audio format.");
+    if (stat.size > 24_000_000) throw new Error("Recording is too large to transcribe (24 MB maximum).");
+    const storedSettings = uiStateStore.getAll().providerSettings || {};
+    const apiKey = process.env.OPENAI_API_KEY || storedSettings.apiKey;
+    if (!apiKey) throw new Error("Configure an OpenAI API key before using microphone transcription.");
+
+    const form = new FormData();
+    form.append("model", "whisper-1");
+    form.append("file", new Blob([await fs.readFile(file)]), path.basename(file));
+    const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { authorization: `Bearer ${apiKey}` },
+      body: form,
+      signal: AbortSignal.timeout(120_000),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error?.message || `OpenAI transcription failed (${response.status}).`);
+    const text = typeof payload.text === "string" ? payload.text.trim() : "";
+    if (!text) throw new Error("OpenAI returned an empty transcription.");
+    json(res, 200, { ok: true, text, model: "whisper-1" });
   } catch (error) {
     json(res, 400, { ok: false, error: error.message });
   }
@@ -505,13 +644,13 @@ async function resolveWorkspace(requested) {
   return fs.realpath(root);
 }
 
-async function createAgentSession(socket, sessionId, streamStates, root, pendingApprovals) {
+async function createAgentSession(socket, sessionId, streamStates, root, pendingApprovals, disabledSteps = []) {
   const storedSettings = uiStateStore.getAll().providerSettings || {};
   const settings = { ...storedSettings, ...(providerSettings.get(socket) || {}) };
   const provider = normalizeProvider(settings.provider || process.env.AI_PROVIDER);
   const model = settings.model ||
     process.env.AI_MODEL ||
-    defaultModel(provider);
+    defaultModelForProvider(provider);
   const approveAll = process.env.AI_HARNESS_WEB_APPROVE === "true";
   const approveMcp = async (description) => {
     if (approveAll) {
@@ -549,9 +688,7 @@ async function createAgentSession(socket, sessionId, streamStates, root, pending
     sendJson(socket, { type: "answer_delta", sessionId, text });
   };
 
-  const apiKey = provider === "custom"
-    ? settings.apiKey || process.env.CUSTOM_AI_API_KEY || ""
-    : settings.apiKey || "";
+  const apiKey = resolveProviderApiKey(provider, settings.apiKey);
   if (provider === "openai" && !apiKey) {
     throw new Error("Save an OpenAI API key in Provider settings first.");
   }
@@ -559,19 +696,20 @@ async function createAgentSession(socket, sessionId, streamStates, root, pending
   const client = createModelClient({
     provider,
     apiKey,
-    baseUrl: settings.baseUrl || defaultBaseUrl(provider),
+    baseUrl: settings.baseUrl || defaultBaseUrlForProvider(provider),
   });
   const permissions = normalizeToolPermissions(toolPermissions.get(socket));
   // Enabling a built-in tool in the web Tools settings is the user's
   // authorization to execute it. Disabled tools are not exposed to the model.
-  const localTools = createTools({ root, approve: async () => true })
+  const disabled = new Set(disabledSteps);
+  const localTools = disabled.has("tools") ? [] : createTools({ root, approve: async () => true })
     .filter((tool) => permissions[tool.name] === true);
-  const mcpTools = await loadMcpTools({
-    root,
-    configContent: uiStateStore.getMcpConfig() || "",
-    approve: approveMcp,
-    onInfo,
-  });
+  const mcpTools = disabled.has("mcp") ? [] : await loadMcpTools({
+      root,
+      configContent: uiStateStore.getMcpConfig() || "",
+      approve: approveMcp,
+      onInfo,
+    });
   return new CodingAgent({
     client,
     tools: [...localTools, ...mcpTools],
@@ -583,7 +721,41 @@ async function createAgentSession(socket, sessionId, streamStates, root, pending
     onEvent,
     onTextDelta,
     systemPrompts: uiStateStore.getSystemPrompts(),
+    skills: uiStateStore.getSelectedSkills(),
+    disabledSteps,
   });
+}
+
+function createExecutionControl({ onPaused = () => {}, onResumed = () => {} } = {}) {
+  let state = "running";
+  let waiters = [];
+  return {
+    get state() {
+      return state;
+    },
+    requestPause() {
+      if (state !== "running") return false;
+      state = "pause_requested";
+      return true;
+    },
+    resume() {
+      if (state === "running") return false;
+      state = "running";
+      const pending = waiters;
+      waiters = [];
+      pending.forEach((resolve) => resolve());
+      onResumed();
+      return true;
+    },
+    async waitIfPaused() {
+      if (state !== "pause_requested" && state !== "paused") return;
+      if (state === "pause_requested") {
+        state = "paused";
+        onPaused();
+      }
+      await new Promise((resolve) => waiters.push(resolve));
+    },
+  };
 }
 
 function handleWebSocket(socket, req) {
@@ -610,6 +782,7 @@ function handleWebSocket(socket, req) {
   const streamStates = new Map();
   const pendingApprovals = new Map();
   let running = false;
+  let currentRun = null;
 
   socket.on("data", async (chunk) => {
     try {
@@ -664,6 +837,18 @@ function handleWebSocket(socket, req) {
           }
           continue;
         }
+        if (payload.type === "pause") {
+          if (!running || !currentRun || currentRun.sessionId !== sessionId) continue;
+          if (currentRun.controller.requestPause()) {
+            sendJson(socket, { type: "run_pause_requested", sessionId });
+          }
+          continue;
+        }
+        if (payload.type === "resume") {
+          if (!running || !currentRun || currentRun.sessionId !== sessionId) continue;
+          currentRun.controller.resume();
+          continue;
+        }
         if (payload.type === "provider_settings") {
           const provider = normalizeProvider(payload.provider);
           const model = typeof payload.model === "string" ? payload.model.trim() : "";
@@ -681,8 +866,8 @@ function handleWebSocket(socket, req) {
             type: "provider_settings",
             ok: true,
             provider,
-            model: model || defaultModel(provider),
-            baseUrl: baseUrl || defaultBaseUrl(provider),
+            model: model || defaultModelForProvider(provider),
+            baseUrl: baseUrl || defaultBaseUrlForProvider(provider),
           });
           continue;
         }
@@ -704,6 +889,12 @@ function handleWebSocket(socket, req) {
           sendJson(socket, { type: "reload_tools", ok: true });
           continue;
         }
+        if (payload.type === "reload_skills") {
+          agentSessions.clear();
+          streamStates.clear();
+          sendJson(socket, { type: "reload_skills", ok: true });
+          continue;
+        }
         if (payload.type === "reset") {
           const entry = agentSessions.get(sessionId);
           const agent = entry ? await entry.promise : null;
@@ -721,26 +912,42 @@ function handleWebSocket(socket, req) {
         }
 
         running = true;
+        currentRun = {
+          sessionId,
+          controller: createExecutionControl({
+            onPaused: () => sendJson(socket, { type: "run_paused", sessionId }),
+            onResumed: () => sendJson(socket, { type: "run_resumed", sessionId }),
+          }),
+        };
         try {
           const root = await resolveWorkspace(payload.workspace);
+          const allowedSteps = new Set(["composer", "tools", "mcp", "validation", "response"]);
+          const disabledSteps = Array.isArray(payload.disabledSteps)
+            ? [...new Set(payload.disabledSteps.filter((step) => allowedSteps.has(step)))]
+            : [];
+          const stepsKey = disabledSteps.slice().sort().join(",");
           let entry = agentSessions.get(sessionId);
-          const hasExistingAgent = entry?.root === root;
+          const hasExistingAgent = entry?.root === root && entry?.stepsKey === stepsKey;
           if (!hasExistingAgent) {
             entry = {
               root,
-              promise: createAgentSession(socket, sessionId, streamStates, root, pendingApprovals),
+              stepsKey,
+              promise: createAgentSession(socket, sessionId, streamStates, root, pendingApprovals, disabledSteps),
             };
             agentSessions.set(sessionId, entry);
           }
           const agent = await entry.promise;
-          const prompt = hasExistingAgent
+          const composedPrompt = disabledSteps.includes("composer")
             ? payload.prompt
-            : promptWithHistory(payload.prompt, payload.history);
+            : await agent.refinePrompt(payload.prompt, { executionControl: currentRun.controller });
+          const prompt = hasExistingAgent
+            ? composedPrompt
+            : promptWithHistory(composedPrompt, payload.history);
           streamStates.set(sessionId, { started: false });
           const text = await agent.run({
             text: prompt,
             images: requestImages(payload),
-          });
+          }, { disabledSteps, executionControl: currentRun.controller });
           sendJson(socket, { type: "done", text, sessionId });
           streamStates.delete(sessionId);
         } catch (error) {
@@ -748,6 +955,7 @@ function handleWebSocket(socket, req) {
           streamStates.delete(sessionId);
         } finally {
           running = false;
+          currentRun = null;
         }
       }
     } catch (error) {
@@ -766,7 +974,7 @@ function handleWebSocket(socket, req) {
   sendJson(socket, {
     type: "ready",
     provider: envProvider,
-    model: process.env.AI_MODEL || defaultModel(envProvider),
+    model: process.env.AI_MODEL || defaultModelForProvider(envProvider),
     ollamaBaseUrl: process.env.OLLAMA_BASE_URL || "http://localhost:11434",
     customBaseUrl: process.env.CUSTOM_AI_BASE_URL || "http://localhost:8000/v1",
     approveAll: process.env.AI_HARNESS_WEB_APPROVE === "true",
@@ -781,11 +989,11 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
   if (url.pathname === "/api/health") {
     const envProvider = normalizeProvider(process.env.AI_PROVIDER);
-    const storedSettings = uiStateStore.getAll().providerSettings || {};
+    const storedSettings = uiStateStore.getSelectedProvider() || {};
     json(res, 200, {
       ok: true,
       provider: envProvider,
-      model: process.env.AI_MODEL || defaultModel(envProvider),
+      model: process.env.AI_MODEL || defaultModelForProvider(envProvider),
       ollamaModel: process.env.OLLAMA_MODEL || "llama3.1",
       ollamaBaseUrl: process.env.OLLAMA_BASE_URL || "http://localhost:11434",
       customModel: process.env.CUSTOM_AI_MODEL || "custom-model",
@@ -808,8 +1016,16 @@ const server = http.createServer(async (req, res) => {
     await handleUiStateApi(req, res);
     return;
   }
+  if (url.pathname === "/api/rig-configurations") {
+    await handleRigConfigurationsApi(req, res);
+    return;
+  }
   if (url.pathname === "/api/system-prompts") {
     await handleSystemPromptsApi(req, res);
+    return;
+  }
+  if (url.pathname === "/api/skills") {
+    await handleSkillsApi(req, res);
     return;
   }
   if (url.pathname === "/api/workspace-tree") {
@@ -818,6 +1034,14 @@ const server = http.createServer(async (req, res) => {
   }
   if (url.pathname === "/api/workspace-file") {
     await handleWorkspaceFileApi(req, res, url);
+    return;
+  }
+  if (url.pathname === "/api/workspace-recording") {
+    await handleWorkspaceRecordingApi(req, res);
+    return;
+  }
+  if (url.pathname === "/api/workspace-transcription") {
+    await handleWorkspaceTranscriptionApi(req, res);
     return;
   }
   await serveStatic(req, res);

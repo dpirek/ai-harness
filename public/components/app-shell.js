@@ -3,6 +3,7 @@ import "./modals/workspace-picker-modal.js";
 import "./modals/file-editor-modal.js";
 import "./modals/providers-modal.js";
 import "./modals/system-prompts-modal.js";
+import "./modals/skills-modal.js";
 import "./modals/tools-modal.js";
 import "./modals/mcp-modal.js";
 
@@ -27,6 +28,7 @@ class AppShellContent extends BaseComponent {
       element("file-editor-modal"),
       element("providers-modal"),
       element("system-prompts-modal"),
+      element("skills-modal"),
       element("tools-modal"),
       element("mcp-modal"),
     ]);

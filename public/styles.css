@@ -442,6 +442,7 @@ code {
 .columnVisibilityControls { display: flex; gap: 6px; margin-left: auto; }
 .columnVisibilityControls button { display: grid; width: 32px; height: 32px; place-items: center; border: 1px solid var(--line); border-radius: 8px; background: #151515; padding: 0; color: var(--muted); font-size: 1rem; }
 .columnVisibilityControls button:hover, .columnVisibilityControls button[aria-pressed="true"] { background: #242424; color: var(--text); }
+.workspaceExplorerIcon { display: block; width: 20px; height: 20px; }
 
 .workspacePicker {
   display: flex;
@@ -802,6 +803,7 @@ textarea:disabled {
 .filesHeader span { display: block; max-width: 210px; margin-top: 4px; overflow: hidden; color: var(--muted); font-size: .76rem; text-overflow: ellipsis; white-space: nowrap; }
 .filesHeaderActions { display: flex; gap: 6px; }
 .filesHeader button { min-width: 34px; height: 34px; border: 1px solid #333; border-radius: 8px; padding: 0 9px; }
+.filesHeader button .workspaceExplorerIcon { width: 18px; height: 18px; }
 .filesHeader button:disabled { cursor: not-allowed; opacity: .45; }
 .filesHeader #refreshFilesButton { width: 34px; padding: 0; font-size: 1.25rem; }
 .workspaceTree { flex: 1; min-height: 0; overflow: auto; padding: 10px 8px 20px; font-size: .9rem; }
@@ -851,10 +853,22 @@ textarea:disabled {
 .fileEditorPanel header h2 { margin: 0; font-size: 1.05rem; }
 .fileEditorPanel header p { max-width: 760px; margin: 4px 0 0; overflow: hidden; color: var(--muted); font-size: .78rem; text-overflow: ellipsis; white-space: nowrap; }
 .fileEditorPanel header button { min-width: 34px; min-height: 34px; }
+.fileEditorBody { display: grid; min-width: 0; min-height: 0; flex: 1 1 0; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
 .fileEditorPanel textarea { display: block; width: 100%; min-height: 0; flex: 1 1 0; overflow: auto; resize: none; border: 1px solid #333; border-radius: 8px; background: #0e0e0e; color: var(--text); padding: 14px; font: .85rem/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; tab-size: 2; }
+.fileEditorPreview { display: flex; min-width: 0; min-height: 0; flex-direction: column; overflow: hidden; border: 1px solid #333; border-radius: 8px; background: #0e0e0e; }
+.fileEditorPreviewHeader { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid #292d34; background: #191c22; padding: 10px 12px; }
+.fileEditorPreviewHeader strong { font-size: .76rem; letter-spacing: .06em; text-transform: uppercase; }
+.fileEditorPreviewHeader span { color: var(--muted); font-size: .76rem; }
+.fileEditorPreviewContent { min-height: 0; flex: 1 1 0; margin: 0; overflow: auto; padding: 14px; color: #d7dae0; font: .85rem/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+.fileEditorPreviewContent code { display: block; white-space: pre; }
 .fileEditorPanel footer > div { display: flex; gap: 8px; }
 .fileEditorPanel footer button { min-height: 34px; padding: 0 14px; }
 #fileEditorStatus { color: var(--muted); font-size: .8rem; }
+
+@media (max-width: 900px) {
+  .fileEditorBody { grid-template-columns: 1fr; }
+  .fileEditorPreview { min-height: 240px; }
+}
 
 .columnResizeHandle {
   position: relative;
@@ -967,6 +981,12 @@ textarea:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 14px;
+}
+
+.settingsHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .settingsHeader h2 {
@@ -1240,6 +1260,143 @@ textarea:disabled {
   width: 16px;
   height: 16px;
   accent-color: #ececec;
+}
+
+.skillLibrary {
+  display: grid;
+  gap: 12px;
+  border: 1px solid #242424;
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(58, 58, 58, 0.08), transparent 18%),
+    #0b0b0b;
+  padding: 14px;
+}
+
+.skillLibraryHeader {
+  display: grid;
+  gap: 3px;
+}
+
+.skillLibrary h3 {
+  margin: 0;
+  color: #f1f1f1;
+  font-size: 0.96rem;
+}
+
+.skillLibrary p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.skillTableWrap {
+  max-height: 420px;
+  overflow: auto;
+  border: 1px solid #323232;
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 12%),
+    #1a1a1a;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.skillTable {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+}
+
+.skillTable th,
+.skillTable td {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 11px 14px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.skillTable thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: rgba(69, 69, 69, 0.94);
+  color: #cfcfcf;
+  font-size: 0.76rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+}
+
+.skillTable tbody tr {
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.skillTable tbody tr:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.skillTable tbody tr:last-child th,
+.skillTable tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.skillTable th:last-child,
+.skillTable td:last-child {
+  width: 96px;
+  text-align: center;
+}
+
+.skillName {
+  color: #efefef;
+  font-size: 0.98rem;
+  font-weight: 620;
+}
+
+.skillSummary,
+.skillSource {
+  color: #9b9b9b;
+  font-size: 0.81rem;
+}
+
+.skillSummary {
+  margin-top: 2px;
+  max-width: 320px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.skillSource {
+  font-family: "SFMono-Regular", "Monaco", "Consolas", monospace;
+}
+
+.skillTable input[type="checkbox"] {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1px solid #3e3e3e;
+  background: linear-gradient(180deg, #2a2a2a, #1e1e1e);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+}
+
+.skillTable input[type="checkbox"]:checked {
+  border-color: transparent;
+  background:
+    radial-gradient(circle at 50% 50%, #f5f8ff 0 32%, transparent 33%),
+    linear-gradient(180deg, #5d89db, #355fb4);
+}
+
+.skill-column-hidden .skillTable th:last-child,
+.skill-column-hidden .skillTable td:last-child {
+  display: none;
+}
+
+.skillEmptyState {
+  color: var(--muted);
+  font-size: 0.88rem;
+  text-align: center;
+  padding: 18px 14px;
 }
 
 .providerModelActions span {
@@ -1520,6 +1677,134 @@ textarea:disabled {
   font-size: 0.76rem;
   line-height: 1.4;
   white-space: pre-wrap;
+}
+
+.eventActions {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 10px 27px;
+}
+
+.eventDetailButton {
+  border: 1px solid #30343b;
+  border-radius: 999px;
+  background: #14171b;
+  color: #d8dde6;
+  padding: 6px 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.eventDetailButton:hover,
+.eventDetailButton:focus-visible {
+  border-color: #4c6f8a;
+  background: #1a2229;
+  color: #fff;
+  outline: none;
+}
+
+.eventPromptModal {
+  width: min(920px, calc(100vw - 32px));
+  max-height: min(84vh, 860px);
+  border: 1px solid #30343b;
+  border-radius: 14px;
+  background: #101316;
+  color: #ececec;
+  padding: 0;
+  box-shadow: 0 28px 90px #000d, inset 0 1px #ffffff12;
+}
+
+.eventPromptModal::backdrop {
+  background: #050708c7;
+  backdrop-filter: blur(4px);
+}
+
+.eventPromptModalPanel {
+  display: flex;
+  max-height: min(84vh, 860px);
+  flex-direction: column;
+  padding: 24px;
+}
+
+.eventPromptModalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid #262a31;
+  padding-bottom: 16px;
+}
+
+.eventPromptModalHeader h2,
+.eventPromptModalSection h3,
+.eventPromptModalBody p {
+  margin: 0;
+}
+
+.eventPromptModalHeader h2 {
+  color: #f3f3f3;
+  font-size: 1.35rem;
+}
+
+.eventPromptModalClose {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  color: #fff;
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.eventPromptModalClose:hover,
+.eventPromptModalClose:focus-visible {
+  background: #24282e;
+  outline: none;
+}
+
+.eventPromptModalContent {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  padding-top: 18px;
+}
+
+.eventPromptModalSection {
+  overflow: hidden;
+  border: 1px solid #2d3239;
+  border-radius: 12px;
+  background: #15191e;
+}
+
+.eventPromptModalSection h3 {
+  border-bottom: 1px solid #2b3037;
+  background: #1b2026;
+  padding: 12px 14px;
+  color: #eef1f5;
+  font-size: 0.92rem;
+}
+
+.eventPromptModalBody {
+  padding: 14px;
+}
+
+.eventPromptModalBody > * + * {
+  margin-top: 12px;
+}
+
+.eventPromptModalBody p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: #d5dae3;
+  line-height: 1.55;
+}
+
+@media (max-width: 760px) {
+  .eventPromptModalPanel {
+    padding: 20px;
+  }
 }
 
 @media (max-width: 900px) {
