@@ -1,6 +1,7 @@
 import { codeLanguageLabel, highlightCode, normalizeCodeLanguage } from "./file-utils.js";
-import { element } from "./dom.js";
+import { element, showTransientDialog } from "./dom.js";
 import {
+  createSkill as persistCreatedSkill,
   loadSkills as fetchSkills,
   saveSelectedSkills as persistSelectedSkills,
   saveSkillContent as persistSkillContent,
@@ -229,12 +230,22 @@ function createRigSkillsController({
           element("h2", { text: "Skills", attrs: { id: "skillsWindowTitle" } }),
           skillsCount,
         ] }),
+        element("button", {
+          className: "conversation-history-create rig-skills-create",
+          attrs: {
+            type: "button",
+            title: "Create skill",
+            "aria-label": "Create skill",
+          },
+          children: [element("span", { text: "+", attrs: { "aria-hidden": "true" } })],
+        }),
       ] }),
       element("div", { className: "rig-skills-search-wrap", children: [skillsSearchInput] }),
       skillsList,
       element("footer", { className: "rig-skills-footer", children: [skillsStatus, applySkillsButton] }),
     ],
   });
+  const createSkillButton = panel.querySelector(".rig-skills-create");
 
   const skillEditorTitle = element("h2", { text: "Edit Skill", attrs: { id: "skillEditorModalTitle" } });
   const skillEditorPath = element("p", { className: "skill-editor-path" });
@@ -285,7 +296,55 @@ function createRigSkillsController({
       element("div", { className: "step-prompt-actions skill-editor-actions", children: [skillEditorStatus, saveSkillEditorButton] }),
     ] })],
   });
-  document.body.append(skillEditorModal);
+
+  const createSkillNameInput = element("input", {
+    attrs: {
+      type: "text",
+      placeholder: "Skill name",
+      "aria-label": "Skill name",
+      autocomplete: "off",
+    },
+  });
+  const createSkillContentInput = element("textarea", {
+    className: "skill-editor-textarea create-skill-textarea",
+    attrs: {
+      "aria-label": "Skill markdown content",
+      spellcheck: "false",
+      placeholder: "# My Skill\n\nDescribe when this skill should be used.",
+    },
+  });
+  const createSkillStatus = element("p", {
+    className: "skill-editor-status",
+    text: "Create a new local SKILL.md guide under ~/.codex/skills.",
+  });
+  const closeCreateSkillButton = element("button", {
+    className: "step-prompt-modal-close",
+    text: "×",
+    attrs: { type: "button", "aria-label": "Close create skill" },
+  });
+  const saveCreateSkillButton = element("button", {
+    className: "step-prompt-save",
+    text: "Create skill",
+    attrs: { type: "button" },
+  });
+  const createSkillModal = element("dialog", {
+    className: "step-prompt-modal create-skill-modal",
+    attrs: { "aria-labelledby": "createSkillModalTitle" },
+    children: [element("section", { className: "step-prompt-modal-panel create-skill-panel", children: [
+      element("header", { children: [
+        element("div", { children: [
+          element("h2", { text: "New Skill", attrs: { id: "createSkillModalTitle" } }),
+          element("p", { text: "Create a new local SKILL.md file and add it to the skills rail." }),
+        ] }),
+        closeCreateSkillButton,
+      ] }),
+      element("div", { className: "model-config-fields create-skill-fields", children: [
+        element("label", { children: [element("span", { text: "Skill Name" }), createSkillNameInput] }),
+      ] }),
+      createSkillContentInput,
+      element("div", { className: "step-prompt-actions skill-editor-actions", children: [createSkillStatus, saveCreateSkillButton] }),
+    ] })],
+  });
 
   function setVisible(visible) {
     toggleButton.setAttribute("aria-pressed", String(visible));
@@ -330,6 +389,26 @@ function createRigSkillsController({
     }
   }
 
+  async function createSkill() {
+    if (isRunActive()) throw new Error("Wait for the current run to finish before creating skills.");
+    const name = createSkillNameInput.value.trim();
+    if (!name) throw new Error("Skill name is required.");
+    saveCreateSkillButton.disabled = true;
+    createSkillStatus.textContent = "Creating skill…";
+    try {
+      const response = await persistCreatedSkill(name, createSkillContentInput.value);
+      rigSkills = Array.isArray(response.skills) ? response.skills : rigSkills;
+      renderRigSkills();
+      setDefaultStatus();
+      onReloadSkills();
+      createSkillModal.close();
+      openRigSkillEditor(response.skill?.id);
+      onLog(`Created ${response.skill?.name || name}`);
+    } finally {
+      saveCreateSkillButton.disabled = false;
+    }
+  }
+
   function openRigSkillEditor(skillId) {
     const skill = rigSkills.find((entry) => entry.id === skillId);
     if (!skill) return;
@@ -340,7 +419,7 @@ function createRigSkillsController({
     renderSkillMarkdown(skillEditorPreview, skill.content);
     saveSkillEditorButton.disabled = false;
     setSkillEditorMode("preview");
-    if (!skillEditorModal.open) skillEditorModal.showModal();
+    showTransientDialog(skillEditorModal);
   }
 
   async function saveRigSkillEdit() {
@@ -459,9 +538,30 @@ function createRigSkillsController({
       onLog(error.message, "log-error");
     });
   });
+  createSkillButton.addEventListener("click", () => {
+    createSkillNameInput.value = "";
+    createSkillContentInput.value = "";
+    createSkillStatus.textContent = "Create a new local SKILL.md guide under ~/.codex/skills.";
+    saveCreateSkillButton.disabled = false;
+    showTransientDialog(createSkillModal);
+    requestAnimationFrame(() => createSkillNameInput.focus());
+  });
   skillEditorContent.addEventListener("input", () => renderSkillMarkdown(skillEditorPreview, skillEditorContent.value));
   toggleSkillEditorModeButton.addEventListener("click", () => {
     setSkillEditorMode(skillEditorMode === "edit" ? "preview" : "edit");
+  });
+  closeCreateSkillButton.addEventListener("click", () => createSkillModal.close());
+  createSkillModal.addEventListener("click", (event) => {
+    if (event.target === createSkillModal) createSkillModal.close();
+  });
+  saveCreateSkillButton.addEventListener("click", async () => {
+    try {
+      await createSkill();
+    } catch (error) {
+      createSkillStatus.textContent = error.message;
+      saveCreateSkillButton.disabled = false;
+      onLog(error.message, "log-error");
+    }
   });
   closeSkillEditorButton.addEventListener("click", () => skillEditorModal.close());
   skillEditorModal.addEventListener("click", (event) => {

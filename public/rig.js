@@ -10,7 +10,7 @@ import RigIO from "/components/rig-io.js";
 import WorkspacePanel from "/components/workspace-panel.js";
 import "/components/modals/file-editor-modal.js";
 import "/components/modals/workspace-picker-modal.js";
-import { element } from "/lib/dom.js";
+import { element, showTransientDialog, showTransientDialogHost } from "/lib/dom.js";
 import { appendEvent, describeAgentEvent } from "/lib/event-rendering.js";
 import { codeLanguageLabel, renderFilePreview } from "/lib/file-utils.js";
 import { harnessWaveIcon, liveLogIcon, presetsIcon, workspaceExplorerIcon } from "/lib/icons.js";
@@ -257,24 +257,49 @@ const loadRigSkills = () => skillsController.load();
 const setRigSkillsError = (message) => skillsController.setError(message);
 const workspacePickerModal = document.createElement("workspace-picker-modal");
 const fileEditorModal = document.createElement("file-editor-modal");
-document.body.append(workspacePickerModal, fileEditorModal);
-
 const workspaceTreeElement = fileExplorer.querySelector("#workspaceTree");
 const filesWorkspaceLabel = fileExplorer.querySelector("#filesWorkspaceLabel");
 const workspaceInput = fileExplorer.querySelector("#workspaceInput");
-const workspacePickerDialog = workspacePickerModal.querySelector("#workspacePickerDialog");
-const workspacePickerTree = workspacePickerModal.querySelector("#workspacePickerTree");
-const workspacePickerPath = workspacePickerModal.querySelector("#workspacePickerPath");
-const parentWorkspacePickerButton = workspacePickerModal.querySelector("#parentWorkspacePickerButton");
-const confirmWorkspacePickerButton = workspacePickerModal.querySelector("#confirmWorkspacePickerButton");
-const fileEditorDialog = fileEditorModal.querySelector("#fileEditorDialog");
-const fileEditorTitle = fileEditorModal.querySelector("#fileEditorTitle");
-const fileEditorPath = fileEditorModal.querySelector("#fileEditorPath");
-const fileEditorContent = fileEditorModal.querySelector("#fileEditorContent");
-const fileEditorLanguage = fileEditorModal.querySelector("#fileEditorLanguage");
-const fileEditorPreviewCode = fileEditorModal.querySelector("#fileEditorPreviewCode");
-const fileEditorStatus = fileEditorModal.querySelector("#fileEditorStatus");
-const saveFileEditorButton = fileEditorModal.querySelector("#saveFileEditorButton");
+let workspacePickerDialog;
+let workspacePickerTree;
+let workspacePickerPath;
+let parentWorkspacePickerButton;
+let confirmWorkspacePickerButton;
+let fileEditorDialog;
+let fileEditorTitle;
+let fileEditorPath;
+let fileEditorContent;
+let fileEditorLanguage;
+let fileEditorPreviewCode;
+let fileEditorStatus;
+let saveFileEditorButton;
+
+const ensureWorkspacePickerModal = () => {
+  workspacePickerDialog = showTransientDialogHost(workspacePickerModal, "#workspacePickerDialog");
+  workspacePickerTree ||= workspacePickerModal.querySelector("#workspacePickerTree");
+  workspacePickerPath ||= workspacePickerModal.querySelector("#workspacePickerPath");
+  parentWorkspacePickerButton ||= workspacePickerModal.querySelector("#parentWorkspacePickerButton");
+  confirmWorkspacePickerButton ||= workspacePickerModal.querySelector("#confirmWorkspacePickerButton");
+  return workspacePickerDialog;
+};
+
+const ensureFileEditorModal = () => {
+  fileEditorDialog = showTransientDialogHost(fileEditorModal, "#fileEditorDialog");
+  fileEditorTitle ||= fileEditorModal.querySelector("#fileEditorTitle");
+  fileEditorPath ||= fileEditorModal.querySelector("#fileEditorPath");
+  fileEditorContent ||= fileEditorModal.querySelector("#fileEditorContent");
+  fileEditorLanguage ||= fileEditorModal.querySelector("#fileEditorLanguage");
+  fileEditorPreviewCode ||= fileEditorModal.querySelector("#fileEditorPreviewCode");
+  fileEditorStatus ||= fileEditorModal.querySelector("#fileEditorStatus");
+  saveFileEditorButton ||= fileEditorModal.querySelector("#saveFileEditorButton");
+  if (!fileEditorContent.dataset.rigBound) {
+    fileEditorContent.dataset.rigBound = "true";
+    fileEditorContent.addEventListener("input", () => {
+      updateFileEditorPreview(editingFilePath, fileEditorContent.value);
+    });
+  }
+  return fileEditorDialog;
+};
 
 const createEffect = (props) => new GuitarEffect({
   ...props,
@@ -491,7 +516,6 @@ const stepPromptModal = element("dialog", {
     promptModalContent,
   ] })],
 });
-document.body.append(stepPromptModal);
 
 let systemPromptsByKey = null;
 let systemPromptsRequest = null;
@@ -778,7 +802,7 @@ async function openStepPrompt(unit) {
     className: "step-prompt-modal-status",
     text: "Loading system prompts…",
   }));
-  if (!stepPromptModal.open) stepPromptModal.showModal();
+  showTransientDialog(stepPromptModal);
 
   if (!(config.keys?.length) && !config.showToolSettings && !config.showMcpSettings) {
     renderStepPrompts(config);
@@ -835,7 +859,6 @@ const modelConfigModal = element("dialog", {
     element("footer", { children: [refreshModelListButton, saveModelConfigButton] }),
   ] })],
 });
-document.body.append(modelConfigModal);
 
 const defaultModelForProvider = (provider) => {
   if (provider === "ollama") return "llama3.1";
@@ -890,7 +913,7 @@ async function openModelConfig() {
   modelApiKeyInput.value = modelSettings.apiKey;
   modelConfigStatus.textContent = "Choose a provider and model.";
   updateModelProviderFields();
-  if (!modelConfigModal.open) modelConfigModal.showModal();
+  showTransientDialog(modelConfigModal);
   await refreshModelOptions();
 }
 
@@ -1978,6 +2001,7 @@ const selectWorkspace = async (path) => {
 };
 
 async function openWorkspaceFile(node) {
+  ensureFileEditorModal();
   editingFilePath = node.path;
   fileEditorTitle.textContent = node.name;
   fileEditorPath.textContent = node.path;
@@ -1986,7 +2010,6 @@ async function openWorkspaceFile(node) {
   fileEditorContent.disabled = true;
   saveFileEditorButton.disabled = true;
   fileEditorStatus.textContent = "Loading…";
-  fileEditorDialog.showModal();
   try {
     const content = await loadWorkspaceFile(promptWorkspace, node.path);
     if (editingFilePath !== node.path || !fileEditorDialog.open) return;
@@ -2042,6 +2065,7 @@ const chooseWorkspacePickerPath = (path) => {
 };
 
 async function loadWorkspacePickerRoot(rootPath) {
+  ensureWorkspacePickerModal();
   parentWorkspacePickerButton.disabled = true;
   workspacePickerTree.replaceChildren(element("p", { className: "workspaceTreeStatus", text: "Loading folders…" }));
   const payload = await loadWorkspaceTree(rootPath);
@@ -2056,7 +2080,7 @@ async function loadWorkspacePickerRoot(rootPath) {
 }
 
 async function openWorkspacePicker() {
-  workspacePickerDialog.showModal();
+  ensureWorkspacePickerModal();
   try {
     await loadWorkspacePickerRoot(workspaceBrowserRoot || promptWorkspace);
   } catch (error) {
@@ -2076,9 +2100,6 @@ workspacePickerModal.addEventListener("workspace-picker-confirm", async () => {
   await selectWorkspace(pendingWorkspacePath);
 });
 fileEditorModal.addEventListener("save-workspace-file", persistWorkspaceFile);
-fileEditorContent.addEventListener("input", () => {
-  updateFileEditorPreview(editingFilePath, fileEditorContent.value);
-});
 
 const setExplorerVisible = (visible) => {
   app.classList.toggle("explorer-hidden", !visible);

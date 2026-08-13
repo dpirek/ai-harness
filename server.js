@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createModelClient } from "./lib/openai.js";
 import { CodingAgent } from "./lib/agent.js";
-import { loadSkillsFromDisk } from "./lib/skills.js";
+import { createSkillOnDisk, loadSkillsFromDisk } from "./lib/skills.js";
 import { createTools } from "./lib/tools.js";
 import { loadMcpTools } from "./lib/mcp.js";
 import { createUiStateStore } from "./lib/ui-state.js";
@@ -285,6 +285,25 @@ async function handleSkillsApi(req, res) {
     }
     return;
   }
+  if (req.method === "POST") {
+    try {
+      const body = JSON.parse(await readRequestBody(req, 2_100_000) || "{}");
+      if (typeof body.name !== "string") throw new Error("Expected skill name.");
+      const created = await createSkillOnDisk({
+        name: body.name,
+        content: typeof body.content === "string" ? body.content : "",
+      });
+      const skills = await syncSkillsFromDisk();
+      json(res, 200, {
+        ok: true,
+        skill: skills.find((entry) => entry.id === created.id) || created,
+        skills,
+      });
+    } catch (error) {
+      json(res, 400, { ok: false, error: error.message });
+    }
+    return;
+  }
   if (req.method === "PUT") {
     try {
       const body = JSON.parse(await readRequestBody(req, 2_100_000) || "{}");
@@ -310,7 +329,7 @@ async function handleSkillsApi(req, res) {
     }
     return;
   }
-  res.writeHead(405, { allow: "GET, PUT" });
+  res.writeHead(405, { allow: "GET, POST, PUT" });
   res.end();
 }
 

@@ -22,6 +22,10 @@ function saveSkillContent(skillId, content) {
   return requestJson("/api/skills", jsonOptions("PUT", { skillId, content }), "Unable to save skill.");
 }
 
+function createSkill(name, content) {
+  return requestJson("/api/skills", jsonOptions("POST", { name, content }), "Unable to create skill.");
+}
+
 function loadProviderModels({ provider, baseUrl, apiKey }) {
   return requestJson(
     "/api/models",
@@ -56,6 +60,7 @@ function saveRigConfigurations(configurations, activeConfigurationId) {
 
 export {
   loadConfig,
+  createSkill,
   loadHealth,
   loadProviderModels,
   loadRigConfigurations,

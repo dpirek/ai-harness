@@ -1592,6 +1592,8 @@ workspace-panel.rig-file-explorer {
   display: flex;
   min-height: 65px;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   border-bottom: 1px solid #343a3d;
   padding: 12px 14px;
 }
@@ -1612,6 +1614,7 @@ workspace-panel.rig-file-explorer {
 
 .rig-skills > header > div {
   width: 100%;
+  flex: 1 1 auto;
   min-width: 0;
 }
 
@@ -1820,6 +1823,14 @@ workspace-panel.rig-file-explorer {
 
 .skill-editor-toggle {
   min-width: 76px;
+}
+
+.create-skill-panel > header > div {
+  min-width: 0;
+}
+
+.create-skill-textarea {
+  min-height: min(34vh, 320px);
 }
 
 .skill-editor-workbench {
