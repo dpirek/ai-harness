@@ -1381,7 +1381,7 @@ textarea:disabled {
 }
 
 .skillTable input[type="checkbox"]:checked {
-  border-color: #7fb0ff;
+  border-color: transparent;
   background:
     radial-gradient(circle at 50% 50%, #f5f8ff 0 32%, transparent 33%),
     linear-gradient(180deg, #5d89db, #355fb4);

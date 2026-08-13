@@ -1731,9 +1731,8 @@ workspace-panel.rig-file-explorer {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  border: 1px solid #32393b;
-  border-radius: 9px;
   background: #121618;
+  border-bottom: 1px solid #2e3538;
   padding: 11px 12px;
 }
 
@@ -1755,9 +1754,7 @@ workspace-panel.rig-file-explorer {
 }
 
 .rig-skill-open:focus-visible {
-  outline: 2px solid #74d0ff;
-  outline-offset: 4px;
-  border-radius: 6px;
+  outline: none;
 }
 
 .rig-skill-copy {
@@ -1815,6 +1812,39 @@ workspace-panel.rig-file-explorer {
   min-width: 0;
 }
 
+.skill-editor-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.skill-editor-toggle {
+  min-width: 76px;
+}
+
+.skill-editor-workbench {
+  display: block;
+  min-height: 0;
+}
+
+.skill-editor-preview-pane,
+.skill-editor-input-pane {
+  min-width: 0;
+  min-height: 0;
+}
+
+.skill-editor-preview-pane {
+  min-height: min(56vh, 560px);
+  overflow: auto;
+  padding: 16px;
+}
+
+.skill-editor-input-pane[hidden],
+.skill-editor-preview-pane[hidden],
+.skill-editor-actions > [hidden] {
+  display: none;
+}
+
 .skill-editor-path {
   margin: 8px 0 0;
   color: #98a0a3;
@@ -1823,8 +1853,94 @@ workspace-panel.rig-file-explorer {
   overflow-wrap: anywhere;
 }
 
+.skill-markdown-preview {
+  color: #d7dae0;
+  font: 13px/1.65 Georgia, "Times New Roman", serif;
+}
+
+.skill-markdown-preview > * + * {
+  margin-top: 14px;
+}
+
+.skill-markdown-preview h1,
+.skill-markdown-preview h2,
+.skill-markdown-preview h3,
+.skill-markdown-preview h4,
+.skill-markdown-preview p,
+.skill-markdown-preview blockquote {
+  margin: 0;
+}
+
+.skill-markdown-preview h1,
+.skill-markdown-preview h2,
+.skill-markdown-preview h3,
+.skill-markdown-preview h4 {
+  color: #f0f3ed;
+  font-family: "Arial Narrow", "Helvetica Neue", sans-serif;
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+
+.skill-markdown-preview h1 {
+  font-size: 26px;
+}
+
+.skill-markdown-preview h2 {
+  font-size: 21px;
+}
+
+.skill-markdown-preview h3 {
+  font-size: 17px;
+}
+
+.skill-markdown-preview h4 {
+  font-size: 14px;
+  text-transform: uppercase;
+}
+
+.skill-markdown-preview p,
+.skill-markdown-preview li,
+.skill-markdown-preview blockquote {
+  white-space: pre-wrap;
+}
+
+.skill-markdown-preview ul,
+.skill-markdown-preview ol {
+  margin: 0;
+  padding-left: 22px;
+}
+
+.skill-markdown-preview li + li {
+  margin-top: 6px;
+}
+
+.skill-markdown-preview a {
+  color: #8fe8ff;
+}
+
+.skill-markdown-preview code {
+  border: 1px solid #2d3437;
+  border-radius: 6px;
+  background: #111618;
+  padding: 1px 5px;
+  color: #dce0e5;
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.skill-markdown-preview blockquote {
+  border-left: 3px solid #4b5b61;
+  padding-left: 12px;
+  color: #b7bdbf;
+}
+
+.skill-markdown-preview hr {
+  border: 0;
+  border-top: 1px solid #2e3538;
+}
+
 .skill-editor-textarea {
   width: 100%;
+  height: 100%;
   min-height: min(56vh, 560px);
   border: 1px solid #3b4144;
   border-radius: 10px;
@@ -2347,7 +2463,7 @@ workspace-panel.rig-file-explorer {
   font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
-.fileEditorPreviewContent code {
+.fileEditorPreviewContent > code {
   display: block;
   white-space: pre;
 }
@@ -4195,7 +4311,8 @@ rig-io.io.io-active .signal-fill {
   margin-top: 12px;
 }
 
-.rig-chat-message-body .codeBlock {
+.rig-chat-message-body .codeBlock,
+.fileEditorPreview .codeBlock {
   overflow: hidden;
   border: 1px solid #30343b;
   border-radius: 8px;
@@ -4203,7 +4320,8 @@ rig-io.io.io-active .signal-fill {
   margin-bottom: 10px;
 }
 
-.rig-chat-message-body .codeLanguage {
+.rig-chat-message-body .codeLanguage,
+.fileEditorPreview .codeLanguage {
   border-bottom: 1px solid #292d34;
   background: #191c22;
   padding: 6px 10px;
@@ -4214,13 +4332,15 @@ rig-io.io.io-active .signal-fill {
   text-transform: uppercase;
 }
 
-.rig-chat-message-body .codeBlock pre {
+.rig-chat-message-body .codeBlock pre,
+.fileEditorPreview .codeBlock pre {
   margin: 0;
   padding: 12px;
   overflow-x: auto;
 }
 
-.rig-chat-message-body .codeBlock code {
+.rig-chat-message-body .codeBlock code,
+.fileEditorPreview .codeBlock code {
   color: #d7dae0;
   white-space: pre;
 }

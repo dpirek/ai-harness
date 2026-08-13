@@ -11,7 +11,7 @@ import WorkspacePanel from "/components/workspace-panel.js";
 import "/components/modals/file-editor-modal.js";
 import "/components/modals/workspace-picker-modal.js";
 import { appendEvent, describeAgentEvent } from "/lib/event-rendering.js";
-import { codeLanguageLabel, renderFilePreview } from "/lib/file-utils.js";
+import { codeLanguageLabel, highlightCode, normalizeCodeLanguage, renderFilePreview } from "/lib/file-utils.js";
 import { harnessWaveIcon, liveLogIcon, presetsIcon, workspaceExplorerIcon } from "/lib/icons.js";
 import { appendMessageText } from "/lib/message-rendering.js";
 import { mcpBlocks, quoteToml, setToolBlockEnabled } from "/lib/mcp-config.js";
@@ -549,6 +549,12 @@ const closeSkillEditorButton = element("button", {
   text: "×",
   attrs: { type: "button", "aria-label": "Close skill editor" },
 });
+const toggleSkillEditorModeButton = element("button", {
+  className: "skill-editor-toggle step-prompt-save",
+  text: "Edit",
+  attrs: { type: "button" },
+});
+const skillEditorPreview = element("div", { className: "skill-markdown-preview" });
 const skillEditorContent = element("textarea", {
   className: "skill-editor-textarea",
   attrs: { "aria-label": "Skill markdown", spellcheck: "false" },
@@ -562,15 +568,22 @@ const saveSkillEditorButton = element("button", {
   text: "Save skill",
   attrs: { type: "button" },
 });
+const skillEditorPreviewPane = element("section", { className: "fileEditorPreview skill-editor-preview-pane", children: [
+  skillEditorPreview,
+] });
+const skillEditorInputPane = element("section", { className: "skill-editor-input-pane", children: [skillEditorContent] });
 const skillEditorModal = element("dialog", {
   className: "step-prompt-modal skill-editor-modal",
   attrs: { "aria-labelledby": "skillEditorModalTitle" },
   children: [element("section", { className: "step-prompt-modal-panel skill-editor-panel", children: [
     element("header", { children: [
       element("div", { className: "skill-editor-header-copy", children: [skillEditorTitle, skillEditorPath] }),
-      closeSkillEditorButton,
+      element("div", { className: "skill-editor-header-actions", children: [toggleSkillEditorModeButton, closeSkillEditorButton] }),
     ] }),
-    skillEditorContent,
+    element("div", { className: "skill-editor-workbench", children: [
+      skillEditorPreviewPane,
+      skillEditorInputPane,
+    ] }),
     element("div", { className: "step-prompt-actions skill-editor-actions", children: [skillEditorStatus, saveSkillEditorButton] }),
   ] })],
 });
@@ -620,6 +633,7 @@ const applyToolPermissions = async (nextPermissions, {
 let rigSkills = [];
 let activeRigSkillId = null;
 let rigSkillsSearchTerm = "";
+let skillEditorMode = "preview";
 const defaultRigSkillsStatus = "Selected skills here are added to new harness sessions. Click a skill to edit it.";
 
 const summarizeRigSkillSource = (sourcePath = "") => {
@@ -633,6 +647,179 @@ const summarizeRigSkillContent = (content = "") => (
     .find((line) => line.trim() && !line.trim().startsWith("#"))
     || "SKILL.md"
 );
+
+const appendInlineMarkdown = (container, text) => {
+  const value = String(text || "");
+  const pattern = /(`[^`]+`)|(\[[^\]]+\]\(([^)]+)\))|(\*\*[^*]+\*\*)|(\*[^*]+\*)/g;
+  let cursor = 0;
+  for (const match of value.matchAll(pattern)) {
+    if (match.index > cursor) container.append(document.createTextNode(value.slice(cursor, match.index)));
+    if (match[1]) {
+      const code = document.createElement("code");
+      code.textContent = match[1].slice(1, -1);
+      container.append(code);
+    } else if (match[2]) {
+      const link = document.createElement("a");
+      link.href = match[3];
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      link.textContent = match[2].slice(1, match[2].indexOf("]("));
+      container.append(link);
+    } else if (match[4]) {
+      const strong = document.createElement("strong");
+      strong.textContent = match[4].slice(2, -2);
+      container.append(strong);
+    } else if (match[5]) {
+      const emphasis = document.createElement("em");
+      emphasis.textContent = match[5].slice(1, -1);
+      container.append(emphasis);
+    }
+    cursor = match.index + match[0].length;
+  }
+  if (cursor < value.length) container.append(document.createTextNode(value.slice(cursor)));
+};
+
+const appendMarkdownParagraph = (container, lines) => {
+  const text = lines.join(" ").trim();
+  if (!text) return;
+  const paragraph = document.createElement("p");
+  appendInlineMarkdown(paragraph, text);
+  container.append(paragraph);
+};
+
+const appendMarkdownCodeBlock = (container, code, language = "") => {
+  const normalized = normalizeCodeLanguage(language);
+  const block = document.createElement("div");
+  block.className = "codeBlock";
+  const label = document.createElement("div");
+  label.className = "codeLanguage";
+  label.textContent = codeLanguageLabel(normalized);
+  const pre = document.createElement("pre");
+  const codeNode = document.createElement("code");
+  codeNode.className = normalized ? `language-${normalized}` : "";
+  codeNode.append(highlightCode(code.replace(/\r?\n$/, ""), normalized));
+  pre.append(codeNode);
+  block.append(label, pre);
+  container.append(block);
+};
+
+const renderSkillMarkdown = (content = "") => {
+  skillEditorPreview.replaceChildren();
+  const lines = String(content || "").split(/\r?\n/);
+  const paragraphLines = [];
+  let currentList = null;
+  let codeFenceLanguage = "";
+  let codeFenceLines = null;
+
+  const flushParagraph = () => {
+    if (!paragraphLines.length) return;
+    appendMarkdownParagraph(skillEditorPreview, paragraphLines.splice(0));
+  };
+
+  const flushList = () => {
+    if (!currentList) return;
+    skillEditorPreview.append(currentList);
+    currentList = null;
+  };
+
+  for (const line of lines) {
+    if (codeFenceLines) {
+      if (/^```/.test(line.trim())) {
+        appendMarkdownCodeBlock(skillEditorPreview, codeFenceLines.join("\n"), codeFenceLanguage);
+        codeFenceLines = null;
+        codeFenceLanguage = "";
+      } else {
+        codeFenceLines.push(line);
+      }
+      continue;
+    }
+
+    const fenceMatch = line.match(/^```([\w+-]*)\s*$/);
+    if (fenceMatch) {
+      flushParagraph();
+      flushList();
+      codeFenceLanguage = fenceMatch[1];
+      codeFenceLines = [];
+      continue;
+    }
+
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+
+    const headingMatch = trimmed.match(/^(#{1,4})\s+(.*)$/);
+    if (headingMatch) {
+      flushParagraph();
+      flushList();
+      const heading = document.createElement(`h${Math.min(4, headingMatch[1].length)}`);
+      appendInlineMarkdown(heading, headingMatch[2]);
+      skillEditorPreview.append(heading);
+      continue;
+    }
+
+    if (/^---+$/.test(trimmed) || /^\*\*\*+$/.test(trimmed)) {
+      flushParagraph();
+      flushList();
+      skillEditorPreview.append(document.createElement("hr"));
+      continue;
+    }
+
+    const quoteMatch = trimmed.match(/^>\s?(.*)$/);
+    if (quoteMatch) {
+      flushParagraph();
+      flushList();
+      const quote = document.createElement("blockquote");
+      const paragraph = document.createElement("p");
+      appendInlineMarkdown(paragraph, quoteMatch[1]);
+      quote.append(paragraph);
+      skillEditorPreview.append(quote);
+      continue;
+    }
+
+    const unorderedMatch = trimmed.match(/^[-*+]\s+(.*)$/);
+    const orderedMatch = trimmed.match(/^\d+\.\s+(.*)$/);
+    if (unorderedMatch || orderedMatch) {
+      flushParagraph();
+      const listType = unorderedMatch ? "ul" : "ol";
+      if (!currentList || currentList.tagName.toLowerCase() !== listType) {
+        flushList();
+        currentList = document.createElement(listType);
+      }
+      const item = document.createElement("li");
+      appendInlineMarkdown(item, (unorderedMatch || orderedMatch)[1]);
+      currentList.append(item);
+      continue;
+    }
+
+    paragraphLines.push(trimmed);
+  }
+
+  flushParagraph();
+  flushList();
+  if (codeFenceLines) appendMarkdownCodeBlock(skillEditorPreview, codeFenceLines.join("\n"), codeFenceLanguage);
+};
+
+const setSkillEditorMode = (mode = "preview") => {
+  skillEditorMode = mode === "edit" ? "edit" : "preview";
+  const editing = skillEditorMode === "edit";
+  skillEditorModal.classList.toggle("skill-editor-editing", editing);
+  skillEditorPreviewPane.hidden = editing;
+  skillEditorInputPane.hidden = !editing;
+  saveSkillEditorButton.hidden = !editing;
+  toggleSkillEditorModeButton.textContent = editing ? "Preview" : "Edit";
+  toggleSkillEditorModeButton.setAttribute("aria-label", editing ? "Show markdown preview" : "Edit markdown source");
+  skillEditorStatus.textContent = editing
+    ? "Editing the raw SKILL.md source."
+    : "Viewing the rendered markdown preview.";
+  if (editing) {
+    requestAnimationFrame(() => skillEditorContent.focus());
+  } else {
+    renderSkillMarkdown(skillEditorContent.value);
+  }
+};
 
 const skillMatchesSearch = (skill, searchTerm) => {
   if (!searchTerm) return true;
@@ -651,10 +838,10 @@ const openRigSkillEditor = (skillId) => {
   skillEditorTitle.textContent = skill.name;
   skillEditorPath.textContent = summarizeRigSkillSource(skill.sourcePath);
   skillEditorContent.value = skill.content;
-  skillEditorStatus.textContent = "Update the SKILL.md content and save to reload it into the harness.";
+  renderSkillMarkdown(skill.content);
   saveSkillEditorButton.disabled = false;
+  setSkillEditorMode("preview");
   if (!skillEditorModal.open) skillEditorModal.showModal();
-  requestAnimationFrame(() => skillEditorContent.focus());
 };
 
 const saveRigSkillEdit = async () => {
@@ -719,7 +906,7 @@ const renderRigSkills = () => {
         element("span", { className: "rig-skill-copy", children: [
           element("strong", { text: skill.name }),
           element("small", { text: summarizeRigSkillContent(skill.content) }),
-          element("code", { text: summarizeRigSkillSource(skill.sourcePath) }),
+          //element("code", { text: summarizeRigSkillSource(skill.sourcePath) }),
         ] }),
       ],
     });
@@ -766,6 +953,10 @@ skillsSearchInput.addEventListener("input", () => {
   rigSkillsSearchTerm = skillsSearchInput.value.trim().toLowerCase();
   renderRigSkills();
 });
+skillEditorContent.addEventListener("input", () => renderSkillMarkdown(skillEditorContent.value));
+toggleSkillEditorModeButton.addEventListener("click", () => {
+  setSkillEditorMode(skillEditorMode === "edit" ? "preview" : "edit");
+});
 
 closeSkillEditorButton.addEventListener("click", () => skillEditorModal.close());
 skillEditorModal.addEventListener("click", (event) => {
@@ -773,8 +964,8 @@ skillEditorModal.addEventListener("click", (event) => {
 });
 skillEditorModal.addEventListener("close", () => {
   activeRigSkillId = null;
-  skillEditorStatus.textContent = "Update the SKILL.md content and save to reload it into the harness.";
   saveSkillEditorButton.disabled = false;
+  setSkillEditorMode("preview");
 });
 saveSkillEditorButton.addEventListener("click", async () => {
   try {
