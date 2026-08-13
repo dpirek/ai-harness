@@ -24,9 +24,12 @@ import {
   loadHealth,
   loadProviderModels,
   loadRigConfigurations,
+  loadSkills,
   loadSystemPrompts,
   saveConfig,
   saveRigConfigurations,
+  saveSkillContent,
+  saveSelectedSkills,
   saveSystemPrompt,
 } from "/services/settings-api.js";
 import { loadUiState, saveUiState } from "/services/ui-state-api.js";
@@ -67,14 +70,17 @@ const EXPLORER_VISIBLE_STORAGE_KEY = "ai-harness.rigExplorerVisible";
 const HISTORY_VISIBLE_STORAGE_KEY = "ai-harness.rigHistoryVisible";
 const LOG_VISIBLE_STORAGE_KEY = "ai-harness.rigLogVisible";
 const PRESETS_VISIBLE_STORAGE_KEY = "ai-harness.rigPresetsVisible";
+const SKILLS_VISIBLE_STORAGE_KEY = "ai-harness.rigSkillsVisible";
 const ACTIVE_PRESET_STORAGE_KEY = "ai-harness.activeRigPresetId";
 const initialExplorerVisible = localStorage.getItem(EXPLORER_VISIBLE_STORAGE_KEY) === "true";
 const initialHistoryVisible = localStorage.getItem(HISTORY_VISIBLE_STORAGE_KEY) === "true";
 const initialPresetsVisible = localStorage.getItem(PRESETS_VISIBLE_STORAGE_KEY) === "true";
+const initialSkillsVisible = localStorage.getItem(SKILLS_VISIBLE_STORAGE_KEY) === "true";
 app.classList.add("ui-initializing");
 app.classList.toggle("explorer-hidden", !initialExplorerVisible);
 app.classList.toggle("history-hidden", !initialHistoryVisible);
 app.classList.toggle("presets-hidden", !initialPresetsVisible);
+app.classList.toggle("skills-hidden", !initialSkillsVisible);
 
 const runTimeValue = element("strong", { text: "00:00.0" });
 const runModelValue = element("strong", { text: "—" });
@@ -170,12 +176,22 @@ const presetsToggle = element("button", {
   },
   children: [presetsIcon()],
 });
+const skillsToggle = element("button", {
+  className: "explorer-toggle skills-toggle",
+  text: "☷",
+  attrs: {
+    type: "button",
+    title: initialSkillsVisible ? "Hide skills" : "Show skills",
+    "aria-label": initialSkillsVisible ? "Hide skills" : "Show skills",
+    "aria-pressed": String(initialSkillsVisible),
+  },
+});
 const logToggle = document.querySelector(".topbar .log-toggle");
 logToggle.replaceChildren(liveLogIcon());
 const toolbarButtonGroup = element("div", {
   className: "toolbar-button-group",
   attrs: { role: "group", "aria-label": "Workspace controls" },
-  children: [explorerToggle, historyToggle, presetsToggle, logToggle],
+  children: [explorerToggle, historyToggle, presetsToggle, skillsToggle, logToggle],
 });
 document.querySelector(".topbar .toolbar").append(toolbarButtonGroup);
 const topbar = document.querySelector(".topbar");
@@ -248,6 +264,46 @@ const presetsPanel = element("aside", {
   ],
 });
 app.append(presetsPanel);
+const skillsCount = element("span", { text: "0 skills" });
+const skillsSearchInput = element("input", {
+  className: "rig-skills-search",
+  attrs: {
+    type: "search",
+    placeholder: "Search skills",
+    "aria-label": "Search skills",
+    autocomplete: "off",
+    spellcheck: "false",
+  },
+});
+const skillsList = element("div", {
+  className: "rig-skills-list",
+  children: [element("p", { className: "conversation-history-empty", text: "No skills loaded yet." })],
+});
+const skillsStatus = element("p", {
+  className: "rig-skills-status",
+  text: "Skills selected here are added to new harness sessions.",
+});
+const applySkillsButton = element("button", {
+  className: "tool-selection-save",
+  text: "Apply skills",
+  attrs: { type: "button" },
+});
+const skillsPanel = element("aside", {
+  className: "rig-skills",
+  attrs: { "aria-labelledby": "skillsWindowTitle" },
+  children: [
+    element("header", { children: [
+      element("div", { children: [
+        element("h2", { text: "Skills", attrs: { id: "skillsWindowTitle" } }),
+        skillsCount,
+      ] }),
+    ] }),
+    element("div", { className: "rig-skills-search-wrap", children: [skillsSearchInput] }),
+    skillsList,
+    element("footer", { className: "rig-skills-footer", children: [skillsStatus, applySkillsButton] }),
+  ],
+});
+app.append(skillsPanel);
 const workspacePickerModal = document.createElement("workspace-picker-modal");
 const fileEditorModal = document.createElement("file-editor-modal");
 document.body.append(workspacePickerModal, fileEditorModal);
@@ -486,6 +542,40 @@ const stepPromptModal = element("dialog", {
 });
 document.body.append(stepPromptModal);
 
+const skillEditorTitle = element("h2", { text: "Edit Skill", attrs: { id: "skillEditorModalTitle" } });
+const skillEditorPath = element("p", { className: "skill-editor-path" });
+const closeSkillEditorButton = element("button", {
+  className: "step-prompt-modal-close",
+  text: "×",
+  attrs: { type: "button", "aria-label": "Close skill editor" },
+});
+const skillEditorContent = element("textarea", {
+  className: "skill-editor-textarea",
+  attrs: { "aria-label": "Skill markdown", spellcheck: "false" },
+});
+const skillEditorStatus = element("p", {
+  className: "skill-editor-status",
+  text: "Update the SKILL.md content and save to reload it into the harness.",
+});
+const saveSkillEditorButton = element("button", {
+  className: "step-prompt-save",
+  text: "Save skill",
+  attrs: { type: "button" },
+});
+const skillEditorModal = element("dialog", {
+  className: "step-prompt-modal skill-editor-modal",
+  attrs: { "aria-labelledby": "skillEditorModalTitle" },
+  children: [element("section", { className: "step-prompt-modal-panel skill-editor-panel", children: [
+    element("header", { children: [
+      element("div", { className: "skill-editor-header-copy", children: [skillEditorTitle, skillEditorPath] }),
+      closeSkillEditorButton,
+    ] }),
+    skillEditorContent,
+    element("div", { className: "step-prompt-actions skill-editor-actions", children: [skillEditorStatus, saveSkillEditorButton] }),
+  ] })],
+});
+document.body.append(skillEditorModal);
+
 let systemPromptsByKey = null;
 let systemPromptsRequest = null;
 
@@ -526,6 +616,174 @@ const applyToolPermissions = async (nextPermissions, {
   appendLog("TOOLS", logMessage);
   return storedToolPermissions;
 };
+
+let rigSkills = [];
+let activeRigSkillId = null;
+let rigSkillsSearchTerm = "";
+const defaultRigSkillsStatus = "Selected skills here are added to new harness sessions. Click a skill to edit it.";
+
+const summarizeRigSkillSource = (sourcePath = "") => {
+  const parts = String(sourcePath).split("/").filter(Boolean);
+  return parts.slice(-4).join("/");
+};
+
+const summarizeRigSkillContent = (content = "") => (
+  String(content)
+    .split(/\r?\n/)
+    .find((line) => line.trim() && !line.trim().startsWith("#"))
+    || "SKILL.md"
+);
+
+const skillMatchesSearch = (skill, searchTerm) => {
+  if (!searchTerm) return true;
+  const haystack = [
+    skill.name,
+    skill.content,
+    skill.sourcePath,
+  ].join("\n").toLowerCase();
+  return haystack.includes(searchTerm);
+};
+
+const openRigSkillEditor = (skillId) => {
+  const skill = rigSkills.find((entry) => entry.id === skillId);
+  if (!skill) return;
+  activeRigSkillId = skill.id;
+  skillEditorTitle.textContent = skill.name;
+  skillEditorPath.textContent = summarizeRigSkillSource(skill.sourcePath);
+  skillEditorContent.value = skill.content;
+  skillEditorStatus.textContent = "Update the SKILL.md content and save to reload it into the harness.";
+  saveSkillEditorButton.disabled = false;
+  if (!skillEditorModal.open) skillEditorModal.showModal();
+  requestAnimationFrame(() => skillEditorContent.focus());
+};
+
+const saveRigSkillEdit = async () => {
+  if (!activeRigSkillId) return;
+  if (runActive) throw new Error("Wait for the current run to finish before editing skills.");
+  saveSkillEditorButton.disabled = true;
+  skillEditorStatus.textContent = "Saving skill…";
+  try {
+    const response = await saveSkillContent(activeRigSkillId, skillEditorContent.value);
+    rigSkills = Array.isArray(response.skills) ? response.skills : rigSkills;
+    renderRigSkills();
+    socketService?.send({ type: "reload_skills" });
+    skillsStatus.textContent = `Saved ${response.skill?.name || "skill"} and reloaded agent context.`;
+    appendLog("SKILLS", `Updated ${response.skill?.name || activeRigSkillId}`);
+    skillEditorModal.close();
+  } catch (error) {
+    skillEditorStatus.textContent = error.message;
+    saveSkillEditorButton.disabled = false;
+  }
+};
+
+const renderRigSkills = () => {
+  skillsList.replaceChildren();
+  if (!rigSkills.length) {
+    skillsList.append(element("p", {
+      className: "conversation-history-empty",
+      text: "No SKILL.md files were discovered under ~/.codex.",
+    }));
+    skillsCount.textContent = "0 skills";
+    applySkillsButton.disabled = true;
+    return;
+  }
+  const filteredSkills = rigSkills.filter((skill) => skillMatchesSearch(skill, rigSkillsSearchTerm));
+  if (!filteredSkills.length) {
+    skillsList.append(element("p", {
+      className: "conversation-history-empty",
+      text: "No skills match the current search.",
+    }));
+    skillsCount.textContent = rigSkillsSearchTerm
+      ? `0 of ${rigSkills.length} skills`
+      : `${rigSkills.length} skill${rigSkills.length === 1 ? "" : "s"}`;
+    applySkillsButton.disabled = false;
+    return;
+  }
+  const fragment = document.createDocumentFragment();
+  filteredSkills.forEach((skill) => {
+    const checkbox = element("input", {
+      attrs: {
+        type: "checkbox",
+        "data-skill-id": skill.id,
+        "aria-label": `Enable skill ${skill.name}`,
+      },
+    });
+    checkbox.checked = skill.selected === true;
+    const openButton = element("button", {
+      className: "rig-skill-open",
+      attrs: {
+        type: "button",
+        "aria-label": `Edit skill ${skill.name}`,
+      },
+      children: [
+        element("span", { className: "rig-skill-copy", children: [
+          element("strong", { text: skill.name }),
+          element("small", { text: summarizeRigSkillContent(skill.content) }),
+          element("code", { text: summarizeRigSkillSource(skill.sourcePath) }),
+        ] }),
+      ],
+    });
+    openButton.addEventListener("click", () => openRigSkillEditor(skill.id));
+    fragment.append(element("div", {
+      className: "rig-skill-row",
+      children: [openButton, checkbox],
+    }));
+  });
+  skillsList.append(fragment);
+  skillsCount.textContent = rigSkillsSearchTerm
+    ? `${filteredSkills.length} of ${rigSkills.length} skills`
+    : `${rigSkills.length} skill${rigSkills.length === 1 ? "" : "s"}`;
+  applySkillsButton.disabled = false;
+};
+
+const loadRigSkills = async () => {
+  skillsStatus.textContent = "Loading skills…";
+  rigSkills = await loadSkills();
+  renderRigSkills();
+  skillsStatus.textContent = defaultRigSkillsStatus;
+};
+
+const applyRigSkillsSelection = async () => {
+  if (runActive) throw new Error("Wait for the current run to finish before changing skills.");
+  const selectedSkillIds = [...skillsList.querySelectorAll("[data-skill-id]:checked")]
+    .map((input) => input.dataset.skillId);
+  skillsStatus.textContent = "Applying skill selection…";
+  applySkillsButton.disabled = true;
+  try {
+    const response = await saveSelectedSkills(selectedSkillIds);
+    const selected = new Set((response.skills || []).map((skill) => skill.id));
+    rigSkills = rigSkills.map((skill) => ({ ...skill, selected: selected.has(skill.id) }));
+    renderRigSkills();
+    socketService?.send({ type: "reload_skills" });
+    skillsStatus.textContent = `${selectedSkillIds.length} skill${selectedSkillIds.length === 1 ? "" : "s"} applied.`;
+    appendLog("SKILLS", `${selectedSkillIds.length} skill${selectedSkillIds.length === 1 ? "" : "s"} selected`);
+  } finally {
+    applySkillsButton.disabled = false;
+  }
+};
+
+skillsSearchInput.addEventListener("input", () => {
+  rigSkillsSearchTerm = skillsSearchInput.value.trim().toLowerCase();
+  renderRigSkills();
+});
+
+closeSkillEditorButton.addEventListener("click", () => skillEditorModal.close());
+skillEditorModal.addEventListener("click", (event) => {
+  if (event.target === skillEditorModal) skillEditorModal.close();
+});
+skillEditorModal.addEventListener("close", () => {
+  activeRigSkillId = null;
+  skillEditorStatus.textContent = "Update the SKILL.md content and save to reload it into the harness.";
+  saveSkillEditorButton.disabled = false;
+});
+saveSkillEditorButton.addEventListener("click", async () => {
+  try {
+    await saveRigSkillEdit();
+  } catch (error) {
+    skillEditorStatus.textContent = error.message;
+    saveSkillEditorButton.disabled = false;
+  }
+});
 
 const createToolSettings = () => {
   const status = element("p", { className: "tool-selection-status", text: "Enabled tools are available to the model." });
@@ -2125,6 +2383,32 @@ presetsToggle.addEventListener("click", () => {
   setPresetsVisible(app.classList.contains("presets-hidden"));
 });
 
+const setSkillsVisible = (visible) => {
+  app.classList.toggle("skills-hidden", !visible);
+  skillsToggle.setAttribute("aria-pressed", String(visible));
+  skillsToggle.title = visible ? "Hide skills" : "Show skills";
+  skillsToggle.setAttribute("aria-label", skillsToggle.title);
+  localStorage.setItem(SKILLS_VISIBLE_STORAGE_KEY, String(visible));
+  if (visible) {
+    loadRigSkills().catch((error) => {
+      skillsStatus.textContent = error.message;
+      appendLog("SKILLS", error.message, "log-error");
+    });
+  }
+  requestAnimationFrame(fitRigToViewport);
+};
+
+skillsToggle.addEventListener("click", () => {
+  setSkillsVisible(app.classList.contains("skills-hidden"));
+});
+
+applySkillsButton.addEventListener("click", () => {
+  applyRigSkillsSelection().catch((error) => {
+    skillsStatus.textContent = error.message;
+    appendLog("SKILLS", error.message, "log-error");
+  });
+});
+
 const setConnectionState = (state, label) => {
   liveStatus.className = `log-live log-${state}`;
   liveStatus.textContent = `● ${label}`;
@@ -2330,6 +2614,10 @@ const handleSocketMessage = (payload) => {
     runModelValue.textContent = payload.model || "—";
     syncWorkflowSynthDisplay();
     appendLog("MODEL", payload.model || "Model updated", payload);
+    return;
+  }
+  if (payload.type === "reload_skills") {
+    appendLog("SKILLS", "Skill context reloaded");
     return;
   }
   if (payload.type === "info") {
@@ -2739,6 +3027,7 @@ const initializePromptStream = async () => {
   setHistoryVisible(localStorage.getItem(HISTORY_VISIBLE_STORAGE_KEY) === "true");
   setLogVisible(localStorage.getItem(LOG_VISIBLE_STORAGE_KEY) !== "false");
   setPresetsVisible(localStorage.getItem(PRESETS_VISIBLE_STORAGE_KEY) === "true");
+  setSkillsVisible(localStorage.getItem(SKILLS_VISIBLE_STORAGE_KEY) === "true");
   const storedWorkspaceHeight = Number(localStorage.getItem(WORKSPACE_HEIGHT_STORAGE_KEY));
   if (Number.isFinite(storedWorkspaceHeight) && storedWorkspaceHeight > 0) {
     setWorkspaceHeight(storedWorkspaceHeight, false);
@@ -2793,6 +3082,12 @@ const initializePromptStream = async () => {
     applyRigComponentState(activeRigConfiguration()?.componentState);
   } catch (error) {
     appendLog("WARN", `Using default workspace: ${error.message}`);
+  }
+  try {
+    await loadRigSkills();
+  } catch (error) {
+    skillsStatus.textContent = error.message;
+    appendLog("SKILLS", error.message, "log-error");
   }
   renderConversationList();
   workspaceInput.value = promptWorkspace;

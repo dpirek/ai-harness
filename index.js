@@ -255,6 +255,7 @@ async function main() {
           `${colors.dim}tool: ${name}${detail ? ` (${detail})` : ""}${colors.reset}\n`,
         );
       },
+      skills: uiState?.store.getSelectedSkills() || [],
     });
 
     const applyProvider = (nextProvider) => {

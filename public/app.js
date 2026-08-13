@@ -25,8 +25,10 @@ import {
   loadConfig as fetchConfig,
   loadHealth as fetchHealth,
   loadProviderModels as fetchProviderModels,
+  loadSkills as fetchSkills,
   loadSystemPrompts as fetchSystemPrompts,
   saveConfig as persistConfig,
+  saveSelectedSkills as persistSelectedSkills,
   saveSystemPrompt as persistSystemPrompt,
 } from "./services/settings-api.js";
 import SocketService from "./services/socket-service.js";
@@ -40,6 +42,7 @@ const workspacePickerModal = document.querySelector("workspace-picker-modal");
 const fileEditorModal = document.querySelector("file-editor-modal");
 const providersModal = document.querySelector("providers-modal");
 const systemPromptsModal = document.querySelector("system-prompts-modal");
+const skillsModal = document.querySelector("skills-modal");
 const toolsModal = document.querySelector("tools-modal");
 const mcpModal = document.querySelector("mcp-modal");
 
@@ -55,12 +58,15 @@ const emptyState = document.querySelector("#emptyState");
 const recentsList = document.querySelector("#recentsList");
 const settingsDialog = document.querySelector("#settingsDialog");
 const systemPromptsDialog = document.querySelector("#systemPromptsDialog");
+const skillsDialog = document.querySelector("#skillsDialog");
 const systemPromptsList = document.querySelector("#systemPromptsList");
 const systemPromptEditor = document.querySelector("#systemPromptEditor");
 const systemPromptEditorTitle = document.querySelector("#systemPromptEditorTitle");
 const systemPromptContent = document.querySelector("#systemPromptContent");
 const systemPromptsStatus = document.querySelector("#systemPromptsStatus");
 const saveSystemPromptButton = document.querySelector("#saveSystemPromptButton");
+const skillsTableBody = document.querySelector("#skillsTableBody");
+const skillsStatus = document.querySelector("#skillsStatus");
 const configInput = document.querySelector("#configInput");
 const configStatus = document.querySelector("#configStatus");
 const saveConfigButton = document.querySelector("#saveConfigButton");
@@ -149,6 +155,7 @@ const STREAM_VISIBLE_STORAGE_KEY = "ai-harness.streamVisible";
 
 let toolsConfigContent = "";
 let systemPrompts = [];
+let skills = [];
 let editingSystemPromptKey = null;
 
 function renderSystemPrompts() {
@@ -177,6 +184,74 @@ async function saveSystemPrompt() {
   systemPromptsStatus.textContent = "System prompt saved"; systemPromptsStatus.dataset.state = "success";
   systemPromptEditor.hidden = true; systemPromptsList.hidden = false; saveSystemPromptButton.hidden = true;
   await loadSystemPrompts();
+}
+
+function summarizeSkillSource(sourcePath = "") {
+  const parts = String(sourcePath).split("/").filter(Boolean);
+  return parts.slice(-4).join("/");
+}
+
+function renderSkills() {
+  skillsTableBody.replaceChildren();
+  if (skills.length === 0) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 3;
+    cell.className = "skillEmptyState";
+    cell.textContent = "No SKILL.md files were discovered under ~/.codex.";
+    row.append(cell);
+    skillsTableBody.append(row);
+    return;
+  }
+
+  for (const skill of skills) {
+    const row = document.createElement("tr");
+    const nameCell = document.createElement("th");
+    nameCell.scope = "row";
+    const name = document.createElement("div");
+    name.className = "skillName";
+    name.textContent = skill.name;
+    const summary = document.createElement("div");
+    summary.className = "skillSummary";
+    summary.textContent = skill.content.split(/\r?\n/).find((line) => line.trim() && !line.trim().startsWith("#")) || "SKILL.md";
+    nameCell.append(name, summary);
+
+    const sourceCell = document.createElement("td");
+    sourceCell.className = "skillSource";
+    sourceCell.textContent = summarizeSkillSource(skill.sourcePath);
+
+    const toggleCell = document.createElement("td");
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = skill.selected === true;
+    checkbox.dataset.skillId = skill.id;
+    checkbox.setAttribute("aria-label", `Enable skill ${skill.name}`);
+    toggleCell.append(checkbox);
+
+    row.append(nameCell, sourceCell, toggleCell);
+    skillsTableBody.append(row);
+  }
+}
+
+async function loadSkills() {
+  skills = await fetchSkills();
+  renderSkills();
+}
+
+function currentSelectedSkillIds() {
+  return [...skillsTableBody.querySelectorAll("input[data-skill-id]:checked")]
+    .map((input) => input.dataset.skillId);
+}
+
+async function saveSkills() {
+  const selectedSkillIds = currentSelectedSkillIds();
+  const response = await persistSelectedSkills(selectedSkillIds);
+  const selectedIds = new Set((response.skills || []).map((skill) => skill.id));
+  skills = skills.map((skill) => ({ ...skill, selected: selectedIds.has(skill.id) }));
+  renderSkills();
+  send({ type: "reload_skills" });
+  skillsStatus.textContent = `${selectedSkillIds.length} skill${selectedSkillIds.length === 1 ? "" : "s"} selected`;
+  skillsStatus.dataset.state = "success";
 }
 
 let sessions = [];
@@ -1157,6 +1232,10 @@ function handleSocketMessage(payload) {
       addEvent("Tools reloaded");
       return;
     }
+    if (payload.type === "reload_skills") {
+      addEvent("Skills reloaded");
+      return;
+    }
     if (payload.type === "info") {
       addEvent(payload.message);
       return;
@@ -1331,6 +1410,11 @@ sidebarComponent.addEventListener("open-modal", async (event) => {
     systemPromptsDialog.showModal();
     try { await loadSystemPrompts(); } catch (error) { systemPromptsStatus.textContent = error.message; systemPromptsStatus.dataset.state = "error"; }
   }
+  if (event.detail.modal === "skills") {
+    skillsDialog.showModal();
+    skillsStatus.textContent = "Loading skills from local SKILL.md files..."; skillsStatus.dataset.state = "";
+    try { await loadSkills(); skillsStatus.textContent = "Skill selections are stored in SQLite."; skillsStatus.dataset.state = ""; } catch (error) { skillsStatus.textContent = error.message; skillsStatus.dataset.state = "error"; }
+  }
   if (event.detail.modal === "tools") {
     toolsDialog.showModal(); renderToolPermissions();
     toolPermissionsStatus.textContent = "Tool permissions are stored in SQLite."; toolPermissionsStatus.dataset.state = "";
@@ -1343,6 +1427,9 @@ sidebarComponent.addEventListener("open-modal", async (event) => {
 
 systemPromptsModal.addEventListener("save-system-prompt", async () => {
   try { await saveSystemPrompt(); } catch (error) { systemPromptsStatus.textContent = error.message; systemPromptsStatus.dataset.state = "error"; }
+});
+skillsModal.addEventListener("save-skills", async () => {
+  try { await saveSkills(); } catch (error) { skillsStatus.textContent = error.message; skillsStatus.dataset.state = "error"; }
 });
 providersModal.addEventListener("refresh-provider-models", loadProviderModels);
 providersModal.addEventListener("add-provider", addProvider);

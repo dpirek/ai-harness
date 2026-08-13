@@ -66,7 +66,7 @@ test("SQLite UI state store persists and updates allowed values", () => {
     "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name",
   ).all().map(({ name }) => name);
   assert.deepEqual(tables, [
-    "events", "layout", "mcp_configuration", "messages", "provider_settings", "providers", "rig_configurations", "sessions", "system_prompts", "token_usage", "tool_permissions",
+    "events", "layout", "mcp_configuration", "messages", "provider_settings", "providers", "rig_configurations", "sessions", "skills", "system_prompts", "token_usage", "tool_permissions",
   ]);
   assert.equal(database.prepare("SELECT count(*) AS count FROM system_prompts").get().count, 5);
   const eventColumns = database.prepare("SELECT name FROM pragma_table_info('events')").all().map(({ name }) => name);
@@ -227,6 +227,61 @@ test("SQLite UI state store exposes and updates selected providers directly", ()
   });
   assert.equal(store.getAll().providerSettings.provider, "ollama");
   assert.throws(() => store.setSelectedProvider("missing"), /Unknown provider: missing/);
+
+  store.close();
+  fs.rmSync(directory, { recursive: true });
+});
+
+test("SQLite UI state store persists synced skills and selected skill toggles", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "ai-harness-ui-state-"));
+  const store = createUiStateStore(path.join(directory, "state.sqlite"));
+
+  const synced = store.syncSkills([
+    {
+      id: "github/gh-fix-ci",
+      name: "gh-fix-ci",
+      sourcePath: "/Users/example/.codex/plugins/github/skills/gh-fix-ci/SKILL.md",
+      content: "# gh-fix-ci\nInspect failing checks.",
+      updatedAt: 100,
+    },
+    {
+      id: "figma/figma-use",
+      name: "figma-use",
+      sourcePath: "/Users/example/.codex/plugins/figma/skills/figma-use/SKILL.md",
+      content: "# figma-use\nUse the Figma tool.",
+      updatedAt: 101,
+    },
+  ]);
+
+  assert.equal(synced.length, 2);
+  assert.deepEqual(store.getSelectedSkills(), []);
+  assert.deepEqual(store.setSelectedSkills(["figma/figma-use"]), [{
+    id: "figma/figma-use",
+    name: "figma-use",
+    sourcePath: "/Users/example/.codex/plugins/figma/skills/figma-use/SKILL.md",
+    content: "# figma-use\nUse the Figma tool.",
+    selected: true,
+    updatedAt: 101,
+  }]);
+
+  const resynced = store.syncSkills([
+    {
+      id: "figma/figma-use",
+      name: "figma-use",
+      sourcePath: "/Users/example/.codex/plugins/figma/skills/figma-use/SKILL.md",
+      content: "# figma-use\nUse the Figma tool carefully.",
+      updatedAt: 102,
+    },
+  ]);
+  assert.deepEqual(resynced, [{
+    id: "figma/figma-use",
+    name: "figma-use",
+    sourcePath: "/Users/example/.codex/plugins/figma/skills/figma-use/SKILL.md",
+    content: "# figma-use\nUse the Figma tool carefully.",
+    selected: true,
+    updatedAt: 102,
+  }]);
+  assert.throws(() => store.setSelectedSkills(["missing"]), /Unknown skill: missing/);
 
   store.close();
   fs.rmSync(directory, { recursive: true });

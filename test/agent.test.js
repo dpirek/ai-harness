@@ -39,6 +39,31 @@ test("environment instructions identify the workspace and enabled tools", () => 
   assert.match(instructions, /Do not report a\s+task as complete until you have validated its outcome/);
 });
 
+test("agent appends selected skill content to model instructions", async () => {
+  const requests = [];
+  const agent = new CodingAgent({
+    client: {
+      async createResponse(body) {
+        requests.push(body);
+        return { id: "resp_1", output_text: "Done." };
+      },
+    },
+    tools: [],
+    model: "test-model",
+    root: "/workspace",
+    skills: [{
+      id: "github/gh-fix-ci",
+      name: "gh-fix-ci",
+      content: "# gh-fix-ci\nInspect failing CI checks before editing.",
+    }],
+  });
+
+  assert.equal(await agent.run("fix CI"), "Done.");
+  assert.match(requests[0].instructions, /Selected skill guides:/);
+  assert.match(requests[0].instructions, /Skill: gh-fix-ci/);
+  assert.match(requests[0].instructions, /Inspect failing CI checks before editing/);
+});
+
 test("agent executes a function call and returns final text", async () => {
   const requests = [];
   const responses = [

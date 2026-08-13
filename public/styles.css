@@ -983,6 +983,12 @@ textarea:disabled {
   gap: 14px;
 }
 
+.settingsHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .settingsHeader h2 {
   margin: 0;
   font-size: 1.12rem;
@@ -1254,6 +1260,143 @@ textarea:disabled {
   width: 16px;
   height: 16px;
   accent-color: #ececec;
+}
+
+.skillLibrary {
+  display: grid;
+  gap: 12px;
+  border: 1px solid #242424;
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(58, 58, 58, 0.08), transparent 18%),
+    #0b0b0b;
+  padding: 14px;
+}
+
+.skillLibraryHeader {
+  display: grid;
+  gap: 3px;
+}
+
+.skillLibrary h3 {
+  margin: 0;
+  color: #f1f1f1;
+  font-size: 0.96rem;
+}
+
+.skillLibrary p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.skillTableWrap {
+  max-height: 420px;
+  overflow: auto;
+  border: 1px solid #323232;
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 12%),
+    #1a1a1a;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.skillTable {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+}
+
+.skillTable th,
+.skillTable td {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 11px 14px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.skillTable thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: rgba(69, 69, 69, 0.94);
+  color: #cfcfcf;
+  font-size: 0.76rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+}
+
+.skillTable tbody tr {
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.skillTable tbody tr:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.skillTable tbody tr:last-child th,
+.skillTable tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.skillTable th:last-child,
+.skillTable td:last-child {
+  width: 96px;
+  text-align: center;
+}
+
+.skillName {
+  color: #efefef;
+  font-size: 0.98rem;
+  font-weight: 620;
+}
+
+.skillSummary,
+.skillSource {
+  color: #9b9b9b;
+  font-size: 0.81rem;
+}
+
+.skillSummary {
+  margin-top: 2px;
+  max-width: 320px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.skillSource {
+  font-family: "SFMono-Regular", "Monaco", "Consolas", monospace;
+}
+
+.skillTable input[type="checkbox"] {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1px solid #3e3e3e;
+  background: linear-gradient(180deg, #2a2a2a, #1e1e1e);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+}
+
+.skillTable input[type="checkbox"]:checked {
+  border-color: #7fb0ff;
+  background:
+    radial-gradient(circle at 50% 50%, #f5f8ff 0 32%, transparent 33%),
+    linear-gradient(180deg, #5d89db, #355fb4);
+}
+
+.skill-column-hidden .skillTable th:last-child,
+.skill-column-hidden .skillTable td:last-child {
+  display: none;
+}
+
+.skillEmptyState {
+  color: var(--muted);
+  font-size: 0.88rem;
+  text-align: center;
+  padding: 18px 14px;
 }
 
 .providerModelActions span {

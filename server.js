@@ -7,6 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createModelClient } from "./lib/openai.js";
 import { CodingAgent } from "./lib/agent.js";
+import { loadSkillsFromDisk } from "./lib/skills.js";
 import { createTools } from "./lib/tools.js";
 import { loadMcpTools } from "./lib/mcp.js";
 import { createUiStateStore } from "./lib/ui-state.js";
@@ -67,6 +68,9 @@ const WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const MAX_WEBSOCKET_TEXT_BYTES = 40 * 1024 * 1024;
 const providerSettings = new Map();
 const toolPermissions = new Map();
+let skillsSyncPromise = null;
+
+await syncSkillsFromDisk();
 
 const DEFAULT_TOOL_PERMISSIONS = {
   list_files: true,
@@ -93,6 +97,17 @@ function json(res, status, payload) {
     "content-length": Buffer.byteLength(body),
   });
   res.end(body);
+}
+
+async function syncSkillsFromDisk() {
+  if (!skillsSyncPromise) {
+    skillsSyncPromise = loadSkillsFromDisk()
+      .then((skills) => uiStateStore.syncSkills(skills))
+      .finally(() => {
+        skillsSyncPromise = null;
+      });
+  }
+  return skillsSyncPromise;
 }
 
 async function readRequestBody(req, limit = 250_000) {
@@ -259,6 +274,44 @@ async function handleSystemPromptsApi(req, res) {
     return;
   }
   res.writeHead(405, { allow: "GET, PUT" }); res.end();
+}
+
+async function handleSkillsApi(req, res) {
+  if (req.method === "GET") {
+    try {
+      json(res, 200, { ok: true, skills: await syncSkillsFromDisk() });
+    } catch (error) {
+      json(res, 400, { ok: false, error: error.message });
+    }
+    return;
+  }
+  if (req.method === "PUT") {
+    try {
+      const body = JSON.parse(await readRequestBody(req, 2_100_000) || "{}");
+      if (Array.isArray(body.selectedSkillIds)) {
+        json(res, 200, { ok: true, skills: uiStateStore.setSelectedSkills(body.selectedSkillIds) });
+        return;
+      }
+      if (typeof body.skillId === "string" && typeof body.content === "string") {
+        const skill = uiStateStore.getSkills().find((entry) => entry.id === body.skillId);
+        if (!skill) throw new Error(`Unknown skill: ${body.skillId}`);
+        await fs.writeFile(skill.sourcePath, body.content, "utf8");
+        const skills = await syncSkillsFromDisk();
+        json(res, 200, {
+          ok: true,
+          skill: skills.find((entry) => entry.id === body.skillId) || null,
+          skills,
+        });
+        return;
+      }
+      throw new Error("Expected selected skill ids or skill content.");
+    } catch (error) {
+      json(res, 400, { ok: false, error: error.message });
+    }
+    return;
+  }
+  res.writeHead(405, { allow: "GET, PUT" });
+  res.end();
 }
 
 async function workspaceTree(root, limit = 2500) {
@@ -649,6 +702,7 @@ async function createAgentSession(socket, sessionId, streamStates, root, pending
     onEvent,
     onTextDelta,
     systemPrompts: uiStateStore.getSystemPrompts(),
+    skills: uiStateStore.getSelectedSkills(),
     disabledSteps,
   });
 }
@@ -816,6 +870,12 @@ function handleWebSocket(socket, req) {
           sendJson(socket, { type: "reload_tools", ok: true });
           continue;
         }
+        if (payload.type === "reload_skills") {
+          agentSessions.clear();
+          streamStates.clear();
+          sendJson(socket, { type: "reload_skills", ok: true });
+          continue;
+        }
         if (payload.type === "reset") {
           const entry = agentSessions.get(sessionId);
           const agent = entry ? await entry.promise : null;
@@ -943,6 +1003,10 @@ const server = http.createServer(async (req, res) => {
   }
   if (url.pathname === "/api/system-prompts") {
     await handleSystemPromptsApi(req, res);
+    return;
+  }
+  if (url.pathname === "/api/skills") {
+    await handleSkillsApi(req, res);
     return;
   }
   if (url.pathname === "/api/workspace-tree") {

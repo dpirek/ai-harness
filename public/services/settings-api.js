@@ -9,6 +9,19 @@ function saveSystemPrompt(key, content) {
   return requestJson("/api/system-prompts", jsonOptions("PUT", { key, content }), "Unable to save system prompt.");
 }
 
+async function loadSkills() {
+  const payload = await requestJson("/api/skills", {}, "Unable to load skills.");
+  return payload.skills || [];
+}
+
+function saveSelectedSkills(selectedSkillIds) {
+  return requestJson("/api/skills", jsonOptions("PUT", { selectedSkillIds }), "Unable to save skills.");
+}
+
+function saveSkillContent(skillId, content) {
+  return requestJson("/api/skills", jsonOptions("PUT", { skillId, content }), "Unable to save skill.");
+}
+
 function loadProviderModels({ provider, baseUrl, apiKey }) {
   return requestJson(
     "/api/models",
@@ -46,8 +59,11 @@ export {
   loadHealth,
   loadProviderModels,
   loadRigConfigurations,
+  loadSkills,
   loadSystemPrompts,
   saveConfig,
   saveRigConfigurations,
+  saveSkillContent,
+  saveSelectedSkills,
   saveSystemPrompt,
 };

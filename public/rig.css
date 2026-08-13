@@ -1276,6 +1276,7 @@ cassette-player.cassette-player-unit.cassette-file-tools-disabled {
   --rig-history-width: 260px;
   --rig-log-width: 280px;
   --rig-presets-width: 250px;
+  --rig-skills-width: 300px;
 }
 
 .app {
@@ -1283,11 +1284,13 @@ cassette-player.cassette-player-unit.cassette-file-tools-disabled {
   --rig-history-visible-width: var(--rig-history-width);
   --rig-log-visible-width: var(--rig-log-width);
   --rig-presets-visible-width: var(--rig-presets-width);
+  --rig-skills-visible-width: var(--rig-skills-width);
   padding-right: calc(
     var(--rig-explorer-visible-width) +
     var(--rig-history-visible-width) +
     var(--rig-log-visible-width) +
-    var(--rig-presets-visible-width)
+    var(--rig-presets-visible-width) +
+    var(--rig-skills-visible-width)
   );
   transition: padding-right 180ms ease;
 }
@@ -1310,6 +1313,10 @@ cassette-player.cassette-player-unit.cassette-file-tools-disabled {
 
 .app.presets-hidden {
   --rig-presets-visible-width: 0px;
+}
+
+.app.skills-hidden {
+  --rig-skills-visible-width: 0px;
 }
 
 .explorer-toggle {
@@ -1396,7 +1403,8 @@ workspace-panel.rig-file-explorer {
 .app.ui-initializing workspace-panel.rig-file-explorer,
 .app.ui-initializing .rig-conversation-history,
 .app.ui-initializing .rig-live-log,
-.app.ui-initializing .rig-presets {
+.app.ui-initializing .rig-presets,
+.app.ui-initializing .rig-skills {
   transition: none;
 }
 
@@ -1477,6 +1485,34 @@ workspace-panel.rig-file-explorer {
   pointer-events: none;
 }
 
+.rig-skills {
+  position: fixed;
+  z-index: 86;
+  top: var(--rig-header-height);
+  right: calc(
+    var(--rig-explorer-visible-width) +
+    var(--rig-history-visible-width) +
+    var(--rig-log-visible-width) +
+    var(--rig-presets-visible-width)
+  );
+  bottom: 0;
+  display: flex;
+  width: var(--rig-skills-width);
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border-left: 1px solid #3c4245;
+  background: linear-gradient(145deg, #171b1d, #0b0f10);
+  box-shadow: -7px 0 18px #0006;
+  transition: right 180ms ease, transform 180ms ease, visibility 180ms ease;
+}
+
+.app.skills-hidden .rig-skills {
+  visibility: hidden;
+  transform: translateX(100%);
+  pointer-events: none;
+}
+
 .rig-conversation-history > header {
   display: flex;
   min-height: 65px;
@@ -1552,6 +1588,14 @@ workspace-panel.rig-file-explorer {
   padding: 12px 14px;
 }
 
+.rig-skills > header {
+  display: flex;
+  min-height: 65px;
+  align-items: center;
+  border-bottom: 1px solid #343a3d;
+  padding: 12px 14px;
+}
+
 .rig-live-log > header > div {
   display: flex;
   width: 100%;
@@ -1566,6 +1610,37 @@ workspace-panel.rig-file-explorer {
   min-width: 0;
 }
 
+.rig-skills > header > div {
+  width: 100%;
+  min-width: 0;
+}
+
+.rig-skills-search-wrap {
+  border-bottom: 1px solid #343a3d;
+  padding: 10px 12px 12px;
+}
+
+.rig-skills-search {
+  width: 100%;
+  border: 1px solid #3d4548;
+  border-radius: 9px;
+  background: linear-gradient(#161b1d, #0f1315);
+  padding: 10px 12px;
+  color: #eef1ee;
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  box-shadow: inset 0 1px #ffffff08;
+}
+
+.rig-skills-search::placeholder {
+  color: #7f8789;
+}
+
+.rig-skills-search:focus {
+  outline: none;
+  border-color: #74d0ff;
+  box-shadow: 0 0 0 2px #74d0ff24, inset 0 1px #ffffff08;
+}
+
 .rig-live-log h2 {
   margin: 0;
   flex: 1 1 auto;
@@ -1576,6 +1651,14 @@ workspace-panel.rig-file-explorer {
 }
 
 .rig-presets h2 {
+  margin: 0;
+  min-width: 0;
+  font-size: 15px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.rig-skills h2 {
   margin: 0;
   min-width: 0;
   font-size: 15px;
@@ -1629,6 +1712,144 @@ workspace-panel.rig-file-explorer {
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
   padding: 12px;
+}
+
+.rig-skills-list {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 12px;
+}
+
+.rig-skill-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid #32393b;
+  border-radius: 9px;
+  background: #121618;
+  padding: 11px 12px;
+}
+
+.rig-skill-open {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rig-skill-open:hover .rig-skill-copy strong,
+.rig-skill-open:focus-visible .rig-skill-copy strong {
+  color: #8fe8ff;
+}
+
+.rig-skill-open:focus-visible {
+  outline: 2px solid #74d0ff;
+  outline-offset: 4px;
+  border-radius: 6px;
+}
+
+.rig-skill-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.rig-skill-copy strong {
+  color: #eef1ee;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.rig-skill-copy small,
+.rig-skill-copy code {
+  color: #949a9c;
+  font-size: 11px;
+}
+
+.rig-skill-copy code {
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.rig-skill-row input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  accent-color: #74d0ff;
+}
+
+.rig-skills-footer {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid #343a3d;
+  padding: 12px 14px 14px;
+}
+
+.rig-skills-status {
+  margin: 0;
+  color: #9aa0a2;
+  font-size: 11px;
+}
+
+.skill-editor-modal {
+  width: min(960px, calc(100vw - 32px));
+}
+
+.skill-editor-panel {
+  gap: 18px;
+}
+
+.skill-editor-header-copy {
+  min-width: 0;
+}
+
+.skill-editor-path {
+  margin: 8px 0 0;
+  color: #98a0a3;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow-wrap: anywhere;
+}
+
+.skill-editor-textarea {
+  width: 100%;
+  min-height: min(56vh, 560px);
+  border: 1px solid #3b4144;
+  border-radius: 10px;
+  outline: none;
+  background: #090c0d;
+  padding: 14px;
+  color: #cdd2ce;
+  font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+  resize: vertical;
+}
+
+.skill-editor-textarea:focus {
+  border-color: #74d0ff;
+  box-shadow: 0 0 0 2px #74d0ff2e;
+}
+
+.skill-editor-actions {
+  justify-content: space-between;
+  padding-top: 0;
+}
+
+.skill-editor-status {
+  margin: 0;
+  color: #9fa5a7;
+  font-size: 11px;
 }
 
 .preset-shortcut {
