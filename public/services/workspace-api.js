@@ -21,6 +21,10 @@ function saveWorkspaceFile(workspace, path, content) {
   );
 }
 
+function workspaceFileAssetUrl(workspace, path) {
+  return `/api/workspace-file-asset?workspace=${encodeURIComponent(workspace)}&path=${encodeURIComponent(path)}`;
+}
+
 async function saveWorkspaceRecording(workspace, blob) {
   const bytes = new Uint8Array(await blob.arrayBuffer());
   const chunkSize = 0x8000;
@@ -49,4 +53,5 @@ export {
   saveWorkspaceFile,
   saveWorkspaceRecording,
   transcribeWorkspaceRecording,
+  workspaceFileAssetUrl,
 };

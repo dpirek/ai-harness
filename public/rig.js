@@ -9,10 +9,11 @@ import WhisperModel from "/components/whisper-model.js";
 import RigIO from "/components/rig-io.js";
 import WorkspacePanel from "/components/workspace-panel.js";
 import "/components/modals/file-editor-modal.js";
+import "/components/modals/image-preview-modal.js";
 import "/components/modals/workspace-picker-modal.js";
 import { element, showTransientDialog, showTransientDialogHost } from "/lib/dom.js";
 import { appendEvent, describeAgentEvent } from "/lib/event-rendering.js";
-import { codeLanguageLabel, renderFilePreview } from "/lib/file-utils.js";
+import { codeLanguageLabel, isPreviewableImagePath, renderFilePreview } from "/lib/file-utils.js";
 import { harnessWaveIcon, liveLogIcon, presetsIcon, workspaceExplorerIcon } from "/lib/icons.js";
 import { appendMessageText } from "/lib/message-rendering.js";
 import { mcpBlocks, quoteToml, setToolBlockEnabled } from "/lib/mcp-config.js";
@@ -38,6 +39,7 @@ import {
   saveWorkspaceFile,
   saveWorkspaceRecording,
   transcribeWorkspaceRecording,
+  workspaceFileAssetUrl,
 } from "/services/workspace-api.js";
 import SocketService from "/services/socket-service.js";
 
@@ -257,6 +259,7 @@ const loadRigSkills = () => skillsController.load();
 const setRigSkillsError = (message) => skillsController.setError(message);
 const workspacePickerModal = document.createElement("workspace-picker-modal");
 const fileEditorModal = document.createElement("file-editor-modal");
+const imagePreviewModal = document.createElement("image-preview-modal");
 const workspaceTreeElement = fileExplorer.querySelector("#workspaceTree");
 const filesWorkspaceLabel = fileExplorer.querySelector("#filesWorkspaceLabel");
 const workspaceInput = fileExplorer.querySelector("#workspaceInput");
@@ -273,6 +276,10 @@ let fileEditorLanguage;
 let fileEditorPreviewCode;
 let fileEditorStatus;
 let saveFileEditorButton;
+let imagePreviewDialog;
+let imagePreviewTitle;
+let imagePreviewPath;
+let imagePreviewContent;
 
 const ensureWorkspacePickerModal = () => {
   workspacePickerDialog = showTransientDialogHost(workspacePickerModal, "#workspacePickerDialog");
@@ -299,6 +306,14 @@ const ensureFileEditorModal = () => {
     });
   }
   return fileEditorDialog;
+};
+
+const ensureImagePreviewModal = () => {
+  imagePreviewDialog = showTransientDialogHost(imagePreviewModal, "#imagePreviewDialog");
+  imagePreviewTitle ||= imagePreviewModal.querySelector("#imagePreviewTitle");
+  imagePreviewPath ||= imagePreviewModal.querySelector("#imagePreviewPath");
+  imagePreviewContent ||= imagePreviewModal.querySelector("#imagePreviewContent");
+  return imagePreviewDialog;
 };
 
 const createEffect = (props) => new GuitarEffect({
@@ -2000,7 +2015,19 @@ const selectWorkspace = async (path) => {
   await refreshWorkspaceTree();
 };
 
+function openWorkspaceImage(node) {
+  ensureImagePreviewModal();
+  imagePreviewTitle.textContent = node.name;
+  imagePreviewPath.textContent = node.path;
+  imagePreviewContent.alt = node.name;
+  imagePreviewContent.src = workspaceFileAssetUrl(promptWorkspace, node.path);
+}
+
 async function openWorkspaceFile(node) {
+  if (isPreviewableImagePath(node.path)) {
+    openWorkspaceImage(node);
+    return;
+  }
   ensureFileEditorModal();
   editingFilePath = node.path;
   fileEditorTitle.textContent = node.name;

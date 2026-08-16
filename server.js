@@ -55,13 +55,19 @@ if (uiStateStore.getMcpConfig() === undefined) {
 }
 
 const CONTENT_TYPES = {
+  ".avif": "image/avif",
+  ".bmp": "image/bmp",
   ".css": "text/css; charset=utf-8",
+  ".gif": "image/gif",
   ".html": "text/html; charset=utf-8",
   ".ico": "image/x-icon",
+  ".jpeg": "image/jpeg",
+  ".jpg": "image/jpeg",
   ".js": "text/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".png": "image/png",
   ".svg": "image/svg+xml; charset=utf-8",
+  ".webp": "image/webp",
 };
 
 const WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
@@ -403,6 +409,31 @@ async function handleWorkspaceFileApi(req, res, url) {
       return;
     }
     res.writeHead(405, { allow: "GET, PUT" }); res.end();
+  } catch (error) {
+    json(res, 400, { ok: false, error: error.message });
+  }
+}
+
+async function handleWorkspaceFileAssetApi(req, res, url) {
+  if (req.method !== "GET") {
+    res.writeHead(405, { allow: "GET" });
+    res.end();
+    return;
+  }
+  try {
+    const { file, stat } = await resolveWorkspaceFile(
+      url.searchParams.get("workspace"),
+      url.searchParams.get("path"),
+    );
+    const extension = path.extname(file).toLowerCase();
+    const contentType = CONTENT_TYPES[extension] || "application/octet-stream";
+    res.writeHead(200, {
+      "content-type": contentType,
+      "content-length": stat.size,
+      "cache-control": "no-store",
+      "x-content-type-options": "nosniff",
+    });
+    res.end(await fs.readFile(file));
   } catch (error) {
     json(res, 400, { ok: false, error: error.message });
   }
@@ -1034,6 +1065,10 @@ const server = http.createServer(async (req, res) => {
   }
   if (url.pathname === "/api/workspace-file") {
     await handleWorkspaceFileApi(req, res, url);
+    return;
+  }
+  if (url.pathname === "/api/workspace-file-asset") {
+    await handleWorkspaceFileAssetApi(req, res, url);
     return;
   }
   if (url.pathname === "/api/workspace-recording") {
