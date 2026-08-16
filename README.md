@@ -1,15 +1,15 @@
-# AI Coding Harness
+# AI Harness
 
-A small Codex-style terminal coding agent written with Node.js built-ins only.
-It uses the OpenAI Responses API and can inspect files, search code, write files,
-and run commands inside the current workspace.
+A Codex-style desktop and terminal coding agent. It uses the OpenAI Responses API
+and can inspect files, search code, write files, and run commands inside the
+current workspace.
 
 ## Requirements
 
-- Node.js 22.5 or newer (the web UI uses the built-in `node:sqlite` module)
+- Node.js 22.12 or newer (the app uses the built-in `node:sqlite` module)
 - An OpenAI API key when using the OpenAI provider
 
-No `npm install` is required.
+Install the Electron development dependencies with `npm install`.
 
 ## Configure
 
@@ -62,10 +62,26 @@ tool is authorized for that browser session and does not show a second approval 
 
 ## Run
 
-Interactive mode:
+Desktop app:
 
 ```sh
-node index.js
+npm start
+```
+
+Create an installable app in `dist/`:
+
+```sh
+npm run dist
+```
+
+Electron stores its SQLite database in the platform-specific application data
+directory and uses the home directory as the initial workspace. Choose another
+folder from the workspace picker at any time.
+
+Interactive terminal mode:
+
+```sh
+npm run cli
 ```
 
 Web interface:

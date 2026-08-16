@@ -20,12 +20,14 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, "public");
-const configPath = path.join(process.cwd(), ".ai-harness/config.toml");
-const databaseDir = path.join(process.cwd(), "db");
+const runtimeRoot = path.resolve(process.env.AI_HARNESS_DATA_DIR || process.cwd());
+const defaultWorkspace = path.resolve(process.env.AI_HARNESS_WORKSPACE || process.cwd());
+const configPath = path.join(runtimeRoot, ".ai-harness/config.toml");
+const databaseDir = path.join(runtimeRoot, "db");
 const uiStateDatabasePath = path.join(databaseDir, "ui-state.sqlite");
-const legacyUiStateDatabasePath = path.join(process.cwd(), ".ai-harness/ui-state.sqlite");
+const legacyUiStateDatabasePath = path.join(runtimeRoot, ".ai-harness/ui-state.sqlite");
 
-const port = Number(process.env.PORT || 3000);
+const defaultPort = Number(process.env.PORT || 3000);
 await fs.mkdir(databaseDir, { recursive: true });
 let databaseExists = true;
 
@@ -669,7 +671,7 @@ async function resolveWorkspace(requested) {
     throw new Error("Select a workspace before sending a prompt.");
   }
   if (requested.length > 4096) throw new Error("Workspace path is too long.");
-  const root = path.resolve(process.cwd(), requested.trim());
+  const root = path.resolve(defaultWorkspace, requested.trim());
   const stat = await fs.stat(root);
   if (!stat.isDirectory()) throw new Error(`Workspace is not a directory: ${requested}`);
   return fs.realpath(root);
@@ -1031,7 +1033,7 @@ const server = http.createServer(async (req, res) => {
       customBaseUrl: process.env.CUSTOM_AI_BASE_URL || "http://localhost:8000/v1",
       hasApiKey: Boolean(storedSettings.apiKey),
       approveAll: process.env.AI_HARNESS_WEB_APPROVE === "true",
-      workspace: process.cwd(),
+      workspace: defaultWorkspace,
     });
     return;
   }
@@ -1091,6 +1093,49 @@ server.on("upgrade", (req, socket) => {
   handleWebSocket(socket, req);
 });
 
-server.listen(port, () => {
-  console.log(`AI Harness web UI listening on http://localhost:${port}`);
+const connections = new Set();
+let storeClosed = false;
+
+server.on("connection", (socket) => {
+  connections.add(socket);
+  socket.on("close", () => connections.delete(socket));
 });
+
+export function startServer({ port = defaultPort, host } = {}) {
+  if (server.listening) {
+    const address = server.address();
+    const activePort = typeof address === "object" ? address.port : port;
+    return Promise.resolve({ server, port: activePort, url: `http://127.0.0.1:${activePort}` });
+  }
+
+  return new Promise((resolve, reject) => {
+    const onError = (error) => reject(error);
+    server.once("error", onError);
+    server.listen(port, host, () => {
+      server.off("error", onError);
+      const address = server.address();
+      const activePort = typeof address === "object" ? address.port : port;
+      const displayHost = host || "localhost";
+      const url = `http://${displayHost}:${activePort}`;
+      console.log(`AI Harness web UI listening on ${url}`);
+      resolve({ server, port: activePort, url });
+    });
+  });
+}
+
+export async function stopServer() {
+  if (server.listening) {
+    const closed = new Promise((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+    for (const socket of connections) socket.destroy();
+    await closed;
+  }
+  if (!storeClosed) {
+    uiStateStore.close();
+    storeClosed = true;
+  }
+}
+
+const isMainModule = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMainModule) await startServer();
