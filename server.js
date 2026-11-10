@@ -11,6 +11,7 @@ import { createSkillOnDisk, loadSkillsFromDisk } from "./lib/skills.js";
 import { createTools } from "./lib/tools.js";
 import { loadMcpTools } from "./lib/mcp.js";
 import { createUiStateStore } from "./lib/ui-state.js";
+import { createWorkspaceTree } from "./lib/workspace-tree.js";
 import {
   defaultBaseUrlForProvider,
   defaultModelForProvider,
@@ -341,36 +342,35 @@ async function handleSkillsApi(req, res) {
   res.end();
 }
 
-async function workspaceTree(root, limit = 2500) {
-  let count = 0;
-  const ignored = new Set([".git", ".ai-harness", "node_modules", "db"]);
-  async function visit(directory) {
-    let entries;
-    try {
-      entries = await fs.readdir(directory, { withFileTypes: true });
-    } catch (error) {
-      if (error.code === "EACCES" || error.code === "EPERM") return [];
-      throw error;
-    }
-    const nodes = [];
-    for (const entry of entries.sort((a, b) => Number(b.isDirectory()) - Number(a.isDirectory()) || a.name.localeCompare(b.name))) {
-      if (ignored.has(entry.name) || count >= limit) continue;
-      count += 1;
-      const absolute = path.join(directory, entry.name);
-      nodes.push(entry.isDirectory()
-        ? { name: entry.name, path: absolute, type: "directory", children: await visit(absolute) }
-        : { name: entry.name, path: absolute, type: "file" });
-    }
-    return nodes;
-  }
-  return visit(root);
-}
-
 async function handleWorkspaceTreeApi(req, res, url) {
   if (req.method !== "GET") { res.writeHead(405, { allow: "GET" }); res.end(); return; }
   try {
     const root = await resolveWorkspace(url.searchParams.get("workspace"));
-    json(res, 200, { ok: true, root, parent: path.dirname(root), tree: await workspaceTree(root) });
+    json(res, 200, { ok: true, root, parent: path.dirname(root), tree: await createWorkspaceTree(root) });
+  } catch (error) {
+    json(res, 400, { ok: false, error: error.message });
+  }
+}
+
+async function handleWorkspaceFolderApi(req, res) {
+  if (req.method !== "POST") { res.writeHead(405, { allow: "POST" }); res.end(); return; }
+  try {
+    const body = JSON.parse(await readRequestBody(req, 10_000) || "{}");
+    const name = typeof body.name === "string" ? body.name.trim() : "";
+    if (!name) throw new Error("Folder name is required.");
+    if (Buffer.byteLength(name) > 255) throw new Error("Folder name is too long.");
+    if (name === "." || name === ".." || name.includes("/") || name.includes("\\") || name.includes("\0")) {
+      throw new Error("Enter a single folder name without path separators.");
+    }
+    const parent = await resolveWorkspace(body.parent);
+    const folder = path.join(parent, name);
+    try {
+      await fs.mkdir(folder);
+    } catch (error) {
+      if (error.code === "EEXIST") throw new Error(`A file or folder named "${name}" already exists.`);
+      throw error;
+    }
+    json(res, 201, { ok: true, path: await fs.realpath(folder) });
   } catch (error) {
     json(res, 400, { ok: false, error: error.message });
   }
@@ -1063,6 +1063,10 @@ const server = http.createServer(async (req, res) => {
   }
   if (url.pathname === "/api/workspace-tree") {
     await handleWorkspaceTreeApi(req, res, url);
+    return;
+  }
+  if (url.pathname === "/api/workspace-folder") {
+    await handleWorkspaceFolderApi(req, res);
     return;
   }
   if (url.pathname === "/api/workspace-file") {

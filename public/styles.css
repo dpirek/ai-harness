@@ -147,6 +147,12 @@ code {
   background: var(--surface-hover);
 }
 
+.sidebarToggle .dmfuUa_panelIcon {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
 .sidebarActions,
 .chatActions,
 .streamHeader {
@@ -828,6 +834,20 @@ textarea:disabled {
 .selectFolderButton:hover { background: #3a3a3a; color: #fff; }
 .workspaceTreeStatus { padding: 12px; color: var(--muted); }
 
+.createWorkspaceDialog { width: min(460px, calc(100vw - 32px)); border: 1px solid #333; border-radius: 12px; background: #141414; color: var(--text); padding: 0; }
+.createWorkspaceDialog::backdrop { background: rgba(0,0,0,.7); }
+.createWorkspacePanel { display: grid; gap: 18px; padding: 18px; }
+.createWorkspacePanel header, .createWorkspacePanel footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.createWorkspacePanel h2 { margin: 0; font-size: 1.05rem; }
+.createWorkspacePanel header p { max-width: 380px; margin: 4px 0 0; overflow: hidden; color: var(--muted); font-size: .78rem; text-overflow: ellipsis; white-space: nowrap; }
+.createWorkspacePanel label { display: grid; gap: 8px; color: #d7d7d7; font-size: .82rem; font-weight: 650; }
+.createWorkspacePanel input { width: 100%; height: 40px; border: 1px solid #393939; border-radius: 8px; background: #090909; color: var(--text); padding: 0 11px; font: inherit; }
+.createWorkspacePanel input:focus { border-color: var(--accent); outline: 2px solid color-mix(in srgb, var(--accent) 25%, transparent); }
+.createWorkspacePanel button { min-height: 34px; border: 1px solid #333; border-radius: 8px; padding: 0 12px; }
+.createWorkspacePanel header button { width: 34px; padding: 0; font-size: 1.2rem; }
+.createWorkspacePanel footer { justify-content: flex-end; }
+.createWorkspaceStatus { min-height: 18px; margin: -8px 0 0; color: #ff9d83; font-size: .78rem; }
+
 .workspacePickerDialog { width: min(620px, calc(100vw - 32px)); max-height: calc(100vh - 48px); border: 1px solid #333; border-radius: 12px; background: #141414; color: var(--text); padding: 0; }
 .workspacePickerDialog::backdrop { background: rgba(0,0,0,.7); }
 .workspacePickerPanel { display: grid; gap: 14px; padding: 18px; }
@@ -836,6 +856,8 @@ textarea:disabled {
 .workspacePickerPanel h2 { margin: 0; font-size: 1.05rem; }
 .workspacePickerPanel p { margin: 4px 0 0; overflow: hidden; color: var(--muted); font-size: .78rem; text-overflow: ellipsis; white-space: nowrap; }
 .workspacePickerPanel button { min-height: 34px; border: 1px solid #333; border-radius: 8px; padding: 0 12px; }
+.workspacePickerPanel header button { display: inline-grid; width: 34px; padding: 0; place-items: center; line-height: 1; }
+.workspacePickerPanel header button .workspaceExplorerIcon { width: 18px; height: 18px; }
 .workspacePickerTree { max-height: 460px; overflow: auto; border: 1px solid #292929; border-radius: 8px; padding: 8px; }
 .workspacePickerOption { display: flex; width: 100%; min-height: 34px; align-items: center; gap: 8px; border: 0 !important; padding: 0 9px !important; text-align: left; }
 .workspacePickerTree summary.workspacePickerOption { cursor: pointer; list-style: none; }
@@ -1004,6 +1026,83 @@ textarea:disabled {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.presetsDialog { width: min(760px, calc(100vw - 32px)); }
+.presetsDialog.editor-open { width: min(1040px, calc(100vw - 32px)); }
+.presetsDialog .settingsPanel { max-height: calc(100vh - 48px); grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; }
+.presetHeaderIdentity { display: flex; min-width: 0; align-items: center; gap: 12px; }
+.presetHeaderIdentity > div { min-width: 0; }
+.presetHeaderIdentity h2, .presetHeaderIdentity p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.presetHeaderIdentity > .iconButton { flex: 0 0 auto; }
+.presetsListView { display: grid; min-height: 0; gap: 14px; overflow: hidden; }
+.presetsListView[hidden], .presetEditor[hidden], #backToPresetsButton[hidden] { display: none; }
+.presetsToolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.presetsToolbar .primaryButton { min-width: 146px; }
+.presetsList { display: grid; min-height: 0; gap: 8px; overflow: auto; }
+.presetRow { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--field); padding: 12px; }
+.presetRow.active { border-color: var(--strong-line); background: var(--raised); }
+.presetIdentity { display: grid; min-width: 0; gap: 5px; }
+.presetName { overflow: hidden; color: var(--text); font-size: .94rem; text-overflow: ellipsis; white-space: nowrap; }
+.presetMeta { overflow: hidden; color: var(--muted); font-size: .78rem; text-overflow: ellipsis; white-space: nowrap; }
+.presetActions { display: flex; align-items: center; gap: 7px; }
+.presetActions button { min-height: 32px; border: 1px solid var(--line); border-radius: 999px; background: var(--raised); padding: 0 11px; color: var(--text); }
+.presetActions button:hover:not(:disabled) { border-color: var(--strong-line); background: var(--surface-hover); }
+.presetActions .presetDeleteButton { color: #ff9a92; }
+.presetActiveBadge { border-radius: 999px; background: var(--selected); padding: 7px 11px; color: var(--muted); font-size: .76rem; font-weight: 750; }
+.presetEmpty { margin: 0; border: 1px dashed var(--line); border-radius: 10px; padding: 28px; color: var(--muted); text-align: center; }
+.presetEditor { display: grid; min-height: 0; gap: 12px; overflow: auto; padding-right: 5px; }
+.presetEditorSection { display: grid; gap: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--field); padding: 16px; }
+.presetSectionHeading { display: flex; align-items: flex-start; gap: 11px; }
+.presetSectionHeading > span { display: grid; width: 30px; height: 30px; flex: 0 0 auto; place-items: center; border: 1px solid var(--strong-line); border-radius: 50%; color: var(--muted); font: 750 .67rem ui-monospace, SFMono-Regular, Menlo, monospace; }
+.presetSectionHeading h3 { margin: 1px 0 0; color: var(--text); font-size: .94rem; }
+.presetSectionHeading p { margin: 4px 0 0; color: var(--muted); font-size: .76rem; }
+.presetFieldGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.presetField { display: grid; min-width: 0; gap: 7px; color: var(--muted); font-size: .76rem; font-weight: 700; }
+.presetFieldWide { grid-column: 1 / -1; }
+.presetField input, .presetField select { width: 100%; height: 40px; min-width: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--raised); padding: 0 11px; color: var(--text); font: inherit; font-weight: 500; }
+.presetField input:focus, .presetField select:focus, .presetPromptField textarea:focus, .presetMcpAddForm input:focus, .presetMcpAddForm select:focus { border-color: var(--accent); outline: 2px solid color-mix(in srgb, var(--accent) 16%, transparent); }
+.presetToggleGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.presetToggle { display: flex; min-width: 0; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--raised); padding: 11px 12px; cursor: pointer; }
+.presetToggle:has(input:checked) { border-color: var(--strong-line); background: var(--selected); }
+.presetToggle input { width: 17px; height: 17px; flex: 0 0 auto; accent-color: var(--accent); }
+.presetToggle > span { display: grid; min-width: 0; gap: 2px; }
+.presetToggle strong { color: var(--text); font-size: .8rem; }
+.presetToggle small { overflow: hidden; color: var(--muted); font-size: .7rem; text-overflow: ellipsis; white-space: nowrap; }
+.presetPromptList { display: grid; gap: 10px; }
+.presetPromptField { display: grid; gap: 7px; color: var(--muted); font-size: .76rem; font-weight: 700; }
+.presetPromptField textarea { width: 100%; min-height: 132px; resize: vertical; border: 1px solid var(--line); border-radius: 8px; background: var(--raised); padding: 11px; color: var(--text); font: 500 .78rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.presetMcpServerList { overflow: hidden; border: 1px solid var(--line); border-radius: 9px; }
+.presetMcpServerRow { display: flex; min-height: 58px; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); background: var(--raised); padding: 10px 12px; }
+.presetMcpServerRow:last-child { border-bottom: 0; }
+.presetMcpServerRow > div { min-width: 0; }
+.presetMcpServerRow strong, .presetMcpServerRow small { display: block; }
+.presetMcpServerRow strong { overflow: hidden; color: var(--text); font-size: .82rem; text-overflow: ellipsis; white-space: nowrap; }
+.presetMcpServerRow small { margin-top: 3px; overflow-wrap: anywhere; color: var(--muted); font-size: .72rem; }
+.presetMcpServerToggle { min-width: 54px; min-height: 31px; flex: 0 0 auto; border: 1px solid var(--line); border-radius: 999px; background: var(--field); color: var(--muted); font-size: .72rem; font-weight: 750; }
+.presetMcpServerToggle.enabled { border-color: #486a50; background: #23452b; color: #dcebdd; }
+.presetMcpEmpty { margin: 0; background: var(--raised); padding: 20px 12px; color: var(--muted); font-size: .78rem; text-align: center; }
+.presetMcpAddHeading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.presetMcpAddHeading h4 { margin: 0; color: var(--text); font-size: .86rem; }
+.presetMcpAddHeading span { color: var(--muted); font-size: .7rem; }
+.presetMcpAddForm { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.presetMcpAddForm label { display: grid; min-width: 0; gap: 7px; color: var(--muted); font-size: .74rem; font-weight: 700; }
+.presetMcpAddForm label[hidden], .presetMcpStdioField[hidden] { display: none; }
+.presetMcpAddForm input, .presetMcpAddForm select { width: 100%; height: 39px; min-width: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--raised); padding: 0 10px; color: var(--text); font: 500 .76rem ui-monospace, SFMono-Regular, Menlo, monospace; }
+.presetMcpAddForm > button { align-self: end; min-height: 39px; border: 1px solid var(--line); border-radius: 8px; background: var(--accent); color: #1b1a18; font-weight: 750; }
+.presetMcpStatus { min-height: 18px; margin: 0; color: var(--muted); font-size: .73rem; }
+.presetMcpStatus[data-state="success"] { color: #9bc7a3; }
+.presetMcpStatus[data-state="error"] { color: #ff9a92; }
+.presetEditorActions { position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: 8px; border: 1px solid var(--line); border-radius: 10px; background: color-mix(in srgb, var(--panel) 92%, transparent); padding: 10px; backdrop-filter: blur(12px); }
+.presetEditorActions button { min-height: 36px; border: 1px solid var(--line); border-radius: 8px; background: var(--raised); padding: 0 14px; color: var(--text); }
+.presetEditorActions .primaryButton { background: var(--accent); color: #1b1a18; }
+
+@media (max-width: 680px) {
+  .presetRow { grid-template-columns: 1fr; }
+  .presetActions { flex-wrap: wrap; }
+  .presetFieldGrid, .presetToggleGrid, .presetMcpAddForm { grid-template-columns: 1fr; }
+  .presetFieldWide { grid-column: auto; }
+  .presetsToolbar { align-items: stretch; flex-direction: column; }
 }
 
 .providerSettings {
@@ -1805,6 +1904,272 @@ textarea:disabled {
   .eventPromptModalPanel {
     padding: 20px;
   }
+}
+
+/* Warm graphite palette used by the alternate light.html interface. */
+:root {
+  --bg: #151412;
+  --sidebar: #1c1b19;
+  --sidebar-line: #2c2a27;
+  --surface: #242220;
+  --surface-hover: #2b2926;
+  --bubble: #292724;
+  --text: #d6d2ce;
+  --muted: #918c87;
+  --faint: #6f6a65;
+  --line: #302e2b;
+  --accent: #e6e2de;
+  --panel: #1a1917;
+  --field: #12110f;
+  --raised: #242321;
+  --selected: #2a2825;
+  --strong-line: #3b3834;
+}
+
+body,
+.app,
+.chat,
+.columnResizeHandle {
+  background: var(--bg);
+}
+
+.sidebar,
+.streamColumn {
+  background: var(--sidebar);
+  color: var(--text);
+}
+
+.filesColumn {
+  background: var(--panel);
+}
+
+.sidebarToggle,
+.iconButton,
+.composerIcon,
+.navList button,
+.sidebarSection button,
+.navIcon,
+.textButton,
+textarea,
+.streamHeader h2,
+.toolTable tbody th,
+.skillName,
+.toolRow strong,
+.eventList .eventTitle {
+  color: var(--text);
+}
+
+.navList button:hover,
+.sidebarSection button:hover,
+.sidebarSection button.active,
+.workspaceTree summary:hover,
+.workspaceFile:hover,
+.workspaceFile:focus-visible,
+.workspacePickerOption:hover,
+.workspacePickerOption.selected,
+.providerTable tbody tr:hover,
+.providerTable tbody tr.selected,
+.skillTable tbody tr:hover {
+  background: var(--selected);
+}
+
+.recentIcon,
+.app.sidebar-collapsed .navList button,
+.app.sidebar-collapsed .sidebarSection button,
+.columnVisibilityControls button,
+.workspacePicker,
+.state,
+.resetFab,
+.composer,
+.imagePreview,
+.filesHeader button,
+.streamHeader button,
+.systemPromptRow button,
+.providerTableToolbar button,
+.providerTable button,
+.providerModelActions button,
+.toolsListHeader button,
+.toggleButton,
+.settingsTemplates button,
+.settingsFooter button,
+.primaryButton,
+.eventDetailButton {
+  border-color: var(--line);
+}
+
+.columnVisibilityControls button,
+.workspacePicker,
+.state,
+.resetFab,
+.streamHeader button,
+.systemPromptRow button,
+.providerTableToolbar button,
+.providerTable button,
+.providerModelActions button,
+.toolsListHeader button,
+.toggleButton,
+.settingsTemplates button,
+.settingsFooter button,
+.eventDetailButton {
+  background: var(--raised);
+}
+
+.columnVisibilityControls button:hover,
+.columnVisibilityControls button[aria-pressed="true"],
+.streamHeader button:hover,
+.providerModelActions button:hover,
+.settingsTemplates button:hover,
+.settingsFooter button:hover,
+.primaryButton:hover,
+.toolsListHeader button:hover,
+.eventDetailButton:hover,
+.eventDetailButton:focus-visible {
+  border-color: var(--strong-line);
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.composerWrap {
+  background: linear-gradient(180deg, transparent, var(--bg) 34%);
+}
+
+.composer {
+  background: var(--raised);
+}
+
+.composer:focus-within {
+  border-color: var(--strong-line);
+  background: var(--surface);
+}
+
+.sendButton,
+.settingsFooter .primaryButton,
+.primaryButton {
+  background: var(--accent);
+  color: #1b1a18;
+}
+
+.workspacePicker input,
+.createWorkspacePanel label,
+.fileEditorPreviewContent,
+.configInput,
+.providerSettings input,
+.providerSettings select,
+.toolsAddPanel input,
+.toolsAddPanel select {
+  color: var(--text);
+}
+
+.createWorkspaceDialog,
+.workspacePickerDialog,
+.fileEditorDialog,
+.settingsDialog,
+.eventPromptModal {
+  border-color: var(--line);
+  background: var(--panel);
+  color: var(--text);
+}
+
+.createWorkspaceDialog::backdrop,
+.workspacePickerDialog::backdrop,
+.fileEditorDialog::backdrop,
+.settingsDialog::backdrop,
+.eventPromptModal::backdrop {
+  background: rgba(15, 14, 13, 0.74);
+}
+
+.createWorkspacePanel input,
+.fileEditorPanel textarea,
+.fileEditorPreview,
+.providerSettings input,
+.providerSettings select,
+.toolsAddPanel input,
+.toolsAddPanel select,
+.configInput,
+.eventList pre {
+  border-color: var(--line);
+  background: var(--field);
+}
+
+.createWorkspacePanel button,
+.workspacePickerPanel button,
+.fileEditorPanel button {
+  border-color: var(--line);
+}
+
+.workspacePickerTree,
+.fileEditorPreview,
+.providerTableWrap,
+.systemPromptsList,
+.toolTableWrap,
+.skillTableWrap,
+.toolsListPanel,
+.toolPermissions,
+.skillLibrary,
+.toolsAddPanel,
+.emptyTools,
+.eventPromptModalSection {
+  border-color: var(--line);
+}
+
+.fileEditorPreviewHeader,
+.toolTable thead th,
+.skillTable thead th,
+.eventPromptModalSection h3 {
+  border-color: var(--line);
+  background: var(--raised);
+}
+
+.toolPermissions,
+.skillLibrary,
+.toolsAddPanel,
+.toolRow,
+.eventPromptModalSection {
+  background: var(--field);
+}
+
+.toolTableWrap,
+.skillTableWrap {
+  background: var(--panel);
+}
+
+.providerTable th,
+.providerTable td,
+.systemPromptRow,
+.toolTable th,
+.toolTable td,
+.skillTable th,
+.skillTable td,
+.mcpListHeader,
+.toolRow,
+.eventList li,
+.eventPromptModalHeader {
+  border-color: var(--line);
+}
+
+.skillTable tbody tr {
+  background: transparent;
+}
+
+.skillTable input[type="checkbox"] {
+  border-color: var(--strong-line);
+  background: var(--raised);
+}
+
+.eventIcon {
+  background: var(--raised);
+  color: #b9b5b0;
+}
+
+.eventDetailButton,
+.eventPromptModalBody p,
+.eventPromptModalSection h3,
+.eventPromptModalHeader h2 {
+  color: var(--text);
+}
+
+.columnResizeHandle::before {
+  background: var(--sidebar-line);
 }
 
 @media (max-width: 900px) {

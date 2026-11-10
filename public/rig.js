@@ -1,14 +1,13 @@
 import GuitarEffect from "/components/guitar-effect.js";
 import CassettePlayer from "/components/cassette-player.js";
 import ModelEngine from "/components/model-engine.js";
-import MusicSynth from "/components/music-synth.js";
-import "/components/music-synth.js";
 import Microphone from "/components/microphone.js";
 import MidiKeyboard from "/components/midi-keyboard.js";
 import WhisperModel from "/components/whisper-model.js";
 import RigIO from "/components/rig-io.js";
 import WorkspacePanel from "/components/workspace-panel.js";
 import "/components/modals/file-editor-modal.js";
+import "/components/modals/create-workspace-modal.js";
 import "/components/modals/image-preview-modal.js";
 import "/components/modals/workspace-picker-modal.js";
 import { element, showTransientDialog, showTransientDialogHost } from "/lib/dom.js";
@@ -17,7 +16,7 @@ import { codeLanguageLabel, isPreviewableImagePath, renderFilePreview } from "/l
 import { harnessWaveIcon, liveLogIcon, presetsIcon, workspaceExplorerIcon } from "/lib/icons.js";
 import { appendMessageText } from "/lib/message-rendering.js";
 import { mcpBlocks, quoteToml, setToolBlockEnabled } from "/lib/mcp-config.js";
-import { effectStatesFromEffects, effectStep, normalizeRigComponentState, normalizeRigModelDisplay } from "/lib/rig-presets.js";
+import { effectStatesFromEffects, effectStep, normalizeRigComponentState } from "/lib/rig-presets.js";
 import { createRigSkillsController } from "/lib/rig-skills.js";
 import { defaultProviderSettings, normalizeToolPermissions } from "/lib/settings.js";
 import { createSession, titleFromPrompt } from "/lib/sessions.js";
@@ -34,6 +33,7 @@ import {
 } from "/services/settings-api.js";
 import { loadUiState, saveUiState } from "/services/ui-state-api.js";
 import {
+  createWorkspaceFolder,
   loadWorkspaceFile,
   loadWorkspaceTree,
   saveWorkspaceFile,
@@ -258,6 +258,7 @@ app.append(skillsPanel);
 const loadRigSkills = () => skillsController.load();
 const setRigSkillsError = (message) => skillsController.setError(message);
 const workspacePickerModal = document.createElement("workspace-picker-modal");
+const createWorkspaceModal = document.createElement("create-workspace-modal");
 const fileEditorModal = document.createElement("file-editor-modal");
 const imagePreviewModal = document.createElement("image-preview-modal");
 const workspaceTreeElement = fileExplorer.querySelector("#workspaceTree");
@@ -267,7 +268,13 @@ let workspacePickerDialog;
 let workspacePickerTree;
 let workspacePickerPath;
 let parentWorkspacePickerButton;
+let createWorkspaceButton;
 let confirmWorkspacePickerButton;
+let createWorkspaceDialog;
+let createWorkspaceParent;
+let createWorkspaceName;
+let createWorkspaceStatus;
+let confirmCreateWorkspaceButton;
 let fileEditorDialog;
 let fileEditorTitle;
 let fileEditorPath;
@@ -286,8 +293,18 @@ const ensureWorkspacePickerModal = () => {
   workspacePickerTree ||= workspacePickerModal.querySelector("#workspacePickerTree");
   workspacePickerPath ||= workspacePickerModal.querySelector("#workspacePickerPath");
   parentWorkspacePickerButton ||= workspacePickerModal.querySelector("#parentWorkspacePickerButton");
+  createWorkspaceButton ||= workspacePickerModal.querySelector("#createWorkspaceButton");
   confirmWorkspacePickerButton ||= workspacePickerModal.querySelector("#confirmWorkspacePickerButton");
   return workspacePickerDialog;
+};
+
+const ensureCreateWorkspaceModal = () => {
+  createWorkspaceDialog = showTransientDialogHost(createWorkspaceModal, "#createWorkspaceDialog");
+  createWorkspaceParent ||= createWorkspaceModal.querySelector("#createWorkspaceParent");
+  createWorkspaceName ||= createWorkspaceModal.querySelector("#createWorkspaceName");
+  createWorkspaceStatus ||= createWorkspaceModal.querySelector("#createWorkspaceStatus");
+  confirmCreateWorkspaceButton ||= createWorkspaceModal.querySelector("#confirmCreateWorkspaceButton");
+  return createWorkspaceDialog;
 };
 
 const ensureFileEditorModal = () => {
@@ -342,17 +359,6 @@ const createEngine = () => new ModelEngine({
   },
 });
 
-const createSynth = () => new MusicSynth({
-  presetName: "Default Harness",
-  handlers: {
-    click: (event) => openStepPrompt(event.currentTarget),
-    keydown: openPromptWithKeyboard,
-    prevPreset: () => cycleRigPreset(-1),
-    nextPreset: () => cycleRigPreset(1),
-    toggleBypass: () => toggleWorkflowSynthBypass(),
-  },
-});
-
 const createChannel = (props) => new RigIO({
   ...props,
   handlers: {
@@ -389,7 +395,6 @@ const whisperModel = new WhisperModel({
 const inputChannel = createChannel({ title: "INPUT", tokenCount: 0, signalLevel: 0, direction: "input", color: "#e84431" });
 const inputComposer = createEffect({ color: "#e84431", icon: "wave", title: "Input", subtitle: "Composer", step: "composer" });
 const modelEngine = createEngine();
-const workflowSynth = createSynth();
 const toolOrchestrator = createEffect({ color: "#8a3abd", icon: "tools", title: "Tool", subtitle: "Orchestrator", step: "tools" });
 const mcpServers = createEffect({ color: "#168b83", icon: "server-rig", title: "MCP", subtitle: "Servers", step: "mcp" });
 const outputValidator = createEffect({ color: "#dca813", icon: "clip", title: "Evaluator", subtitle: "Suite", step: "validation" });
@@ -400,10 +405,6 @@ const responseRenderer = new CassettePlayer({
   },
 });
 const outputChannel = createChannel({ title: "OUTPUT", tokenCount: 0, signalLevel: 0, direction: "output", color: "#2479cf" });
-let activeModelStageUnit = modelEngine;
-const modelStageUnitForMode = (mode) => normalizeRigModelDisplay(mode) === "synth" ? workflowSynth : modelEngine;
-const modelDisplayModeForUnit = (unit) => unit === workflowSynth ? "synth" : "engine";
-const modelDisplayLabel = (mode) => normalizeRigModelDisplay(mode) === "synth" ? "music synth" : "model engine";
 
 const signalUnits = [
   microphone,
@@ -499,7 +500,6 @@ const stepPromptConfig = new Map([
   }],
   [inputComposer, { title: "Input Composer", keys: ["prompt_refinement"] }],
   [modelEngine, { title: "Model Engine", keys: ["agent_instructions"] }],
-  [workflowSynth, { title: "Workflow Synth", keys: ["agent_instructions"] }],
   [toolOrchestrator, { title: "Tool Orchestrator", keys: ["tool_contract"], showToolSettings: true }],
   [mcpServers, { title: "MCP Servers", keys: ["tool_contract"], showMcpSettings: true }],
   [outputValidator, { title: "Output Validation", keys: ["validation_reminder"] }],
@@ -962,7 +962,6 @@ saveModelConfigButton.addEventListener("click", async () => {
     }
     modelEngine.setModel(modelSettings.model);
     runModelValue.textContent = modelSettings.model;
-    syncWorkflowSynthDisplay();
     appendLog("MODEL", `${modelSettings.provider} · ${modelSettings.model}`);
     modelConfigModal.close();
   } catch (error) {
@@ -1294,6 +1293,7 @@ let workspaceBrowserRoot = null;
 let workspacePickerRoot = null;
 let workspacePickerParent = null;
 let pendingWorkspacePath = null;
+let pendingWorkspaceParent = null;
 let editingFilePath = null;
 
 const readStoredActiveRigConfigurationId = () => {
@@ -1345,29 +1345,12 @@ const activeRigConfiguration = () => (
 
 const updateCurrentPresetDisplay = () => {
   runPresetValue.textContent = activeRigConfiguration()?.name || "—";
-  syncWorkflowSynthDisplay();
 };
 
 const updateRunActivityDisplay = () => {
   const runCount = conversation.filter((message) => message.role === "user").length;
   const tokenCount = inputTokens + outputTokens;
   runActivityValue.textContent = `${runCount} run${runCount === 1 ? "" : "s"} · ${tokenCount.toLocaleString()} tok`;
-  syncWorkflowSynthDisplay();
-};
-
-const syncWorkflowSynthDisplay = () => {
-  const active = activeRigConfiguration();
-  const activeIndex = rigConfigurations.findIndex((configuration) => configuration.id === activeRigConfigurationId);
-  workflowSynth.setPreset(
-    String((activeIndex >= 0 ? activeIndex : 0) + 1).padStart(3, "0"),
-    active?.name || "Default Harness",
-  );
-  workflowSynth.setMasterLevel(Math.min(100, Math.max(12, Math.round((inputTokens + outputTokens) / 40))));
-  workflowSynth.setBypassed(
-    configurableEffectSteps.length > 0 && disabledEffectSteps().length === configurableEffectSteps.length,
-    false,
-  );
-  workflowSynth.setModel(modelSettings.model);
 };
 
 const currentEffectStates = () => effectStatesFromEffects(guitarEffects);
@@ -1378,8 +1361,8 @@ const syncActiveRigConfigurationComponentState = () => {
   const active = activeRigConfiguration();
   if (!active) return null;
   active.componentState = normalizeRigComponentState({
+    ...active.componentState,
     inputSource: currentInputSourceValue(),
-    modelDisplay: modelDisplayModeForUnit(activeModelStageUnit),
     effects: currentEffectStates(),
   });
   active.updatedAt = Date.now();
@@ -1398,20 +1381,6 @@ const buildCurrentRigConfigurationSnapshot = (configuration = activeRigConfigura
   mcpConfig: currentMcpConfigContent,
   updatedAt: Date.now(),
 });
-
-const applyModelStageUnit = (nextUnit) => {
-  if (!nextUnit || nextUnit === activeModelStageUnit) return false;
-  const currentIndex = signalUnits.indexOf(activeModelStageUnit);
-  const fallbackIndex = Math.max(0, signalUnits.indexOf(inputComposer) + 1);
-  if (currentIndex >= 0) signalUnits.splice(currentIndex, 1, nextUnit);
-  else signalUnits.splice(fallbackIndex, 0, nextUnit);
-  activeModelStageUnit = nextUnit;
-  harnessStages.find(({ name }) => name === "model").units = [nextUnit];
-  renderSignalChain();
-  requestAnimationFrame(fitRigToViewport);
-  if (activeHarnessStage) setHarnessStage(activeHarnessStage);
-  return true;
-};
 
 const refreshSystemPromptCacheFromConfiguration = (configuration) => {
   if (!systemPromptsByKey || !configuration?.systemPrompts) return;
@@ -1445,58 +1414,6 @@ const activateRigConfigurationById = async (configurationId) => {
   return true;
 };
 
-function cycleRigPreset(direction) {
-  if (runActive || rigConfigurations.length < 2) return;
-  const currentIndex = rigConfigurations.findIndex((configuration) => configuration.id === activeRigConfigurationId);
-  const startIndex = currentIndex >= 0 ? currentIndex : 0;
-  const nextIndex = (startIndex + direction + rigConfigurations.length) % rigConfigurations.length;
-  activateRigConfigurationById(rigConfigurations[nextIndex]?.id);
-}
-
-function toggleWorkflowSynthBypass() {
-  const shouldBypass = disabledEffectSteps().length !== configurableEffectSteps.length;
-  guitarEffects.forEach((effect) => effect.setEnabled(!shouldBypass, false));
-  syncActiveRigConfigurationComponentState();
-  syncWorkflowSynthDisplay();
-  persistRigConfigurationSelection();
-  renderPresetsList();
-  appendLog("FLOW", shouldBypass ? "Workflow synth bypassed" : "Workflow synth engaged");
-  if (activeHarnessStage) setHarnessStage(activeHarnessStage);
-}
-
-const toggleRigConfigurationModelDisplay = (configurationId) => {
-  const index = rigConfigurations.findIndex((configuration) => configuration.id === configurationId);
-  if (index < 0 || runActive) return Promise.resolve(null);
-  const current = rigConfigurations[index];
-  const currentMode = normalizeRigComponentState(current.componentState).modelDisplay;
-  const nextMode = currentMode === "synth" ? "engine" : "synth";
-  rigConfigurations = rigConfigurations.map((configuration, configurationIndex) => (
-    configurationIndex === index
-      ? {
-        ...configuration,
-        componentState: normalizeRigComponentState({
-          ...configuration.componentState,
-          modelDisplay: nextMode,
-        }),
-        updatedAt: Date.now(),
-      }
-      : configuration
-  ));
-  if (configurationId === activeRigConfigurationId) {
-    applyModelStageUnit(modelStageUnitForMode(nextMode));
-    syncActiveRigConfigurationComponentState();
-  }
-  renderPresetsList();
-  return persistRigConfigurationList(rigConfigurations, activeRigConfigurationId, {
-    errorPrefix: "Preset display mode update failed",
-  }).then(() => {
-    if (configurationId === activeRigConfigurationId) {
-      appendLog("PRESET", `Model stage set to ${modelDisplayLabel(nextMode)}`);
-    }
-    return nextMode;
-  });
-};
-
 const renderPresetsList = () => {
   presetsList.replaceChildren();
   if (!rigConfigurations.length) {
@@ -1524,15 +1441,6 @@ const renderPresetsList = () => {
     const meta = element("span", {
       className: "preset-shortcut-meta",
       text: `${normalizedState.inputSource === "keyboard" ? "Keyboard" : "Microphone"} · ${enabledCount}/${configurableEffectSteps.length} modules enabled`,
-    });
-    const displayToggle = element("button", {
-      className: "preset-shortcut-display-toggle",
-      text: modelDisplayLabel(normalizedState.modelDisplay),
-      attrs: {
-        type: "button",
-        "aria-label": `Switch ${configuration.name} between model engine and music synth`,
-        title: "Switch between model engine and music synth",
-      },
     });
     const deleteButton = element("button", {
       className: "preset-shortcut-delete",
@@ -1573,14 +1481,8 @@ const renderPresetsList = () => {
       await deleteRigConfiguration(configuration.id);
     });
     deleteButton.addEventListener("mousedown", (event) => event.stopPropagation());
-    displayToggle.addEventListener("click", async (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      await toggleRigConfigurationModelDisplay(configuration.id);
-    });
-    displayToggle.addEventListener("mousedown", (event) => event.stopPropagation());
     card.addEventListener("click", (event) => {
-      if (event.target === nameInput || event.target === deleteButton || event.target === displayToggle) return;
+      if (event.target === nameInput || event.target === deleteButton) return;
       activateRigConfigurationById(configuration.id);
     });
     card.addEventListener("keydown", (event) => {
@@ -1589,7 +1491,7 @@ const renderPresetsList = () => {
       event.preventDefault();
       activateRigConfigurationById(configuration.id);
     });
-    card.append(deleteButton, nameInput, meta, displayToggle);
+    card.append(deleteButton, nameInput, meta);
     presetsList.append(card);
   });
   presetsCount.textContent = `${rigConfigurations.length} preset${rigConfigurations.length === 1 ? "" : "s"}`;
@@ -1700,13 +1602,11 @@ const deleteRigConfiguration = async (configurationId) => {
 
 const applyRigComponentState = (componentState = {}) => {
   const normalized = normalizeRigComponentState(componentState);
-  applyModelStageUnit(modelStageUnitForMode(normalized.modelDisplay));
   guitarEffects.forEach((effect) => effect.setEnabled(normalized.effects[effectStep(effect)] !== false, false));
   const shouldUseKeyboard = normalized.inputSource === "keyboard";
   if (shouldUseKeyboard !== (activeInputSource === midiKeyboard)) {
     toggleInputSource({ forceSource: normalized.inputSource, persistConfiguration: false, logChange: false });
   }
-  syncWorkflowSynthDisplay();
 };
 
 document.addEventListener("effect-toggle", (event) => {
@@ -2094,11 +1994,13 @@ const chooseWorkspacePickerPath = (path) => {
 async function loadWorkspacePickerRoot(rootPath) {
   ensureWorkspacePickerModal();
   parentWorkspacePickerButton.disabled = true;
+  createWorkspaceButton.disabled = true;
   workspacePickerTree.replaceChildren(element("p", { className: "workspaceTreeStatus", text: "Loading folders…" }));
   const payload = await loadWorkspaceTree(rootPath);
   workspacePickerRoot = payload.root;
   workspacePickerParent = payload.parent;
   parentWorkspacePickerButton.disabled = workspacePickerParent === workspacePickerRoot;
+  createWorkspaceButton.disabled = false;
   renderWorkspacePicker(workspacePickerTree, workspacePickerRoot, payload.tree || [], {
     onChoose: chooseWorkspacePickerPath,
     onConfirm: () => confirmWorkspacePickerButton.click(),
@@ -2115,17 +2017,57 @@ async function openWorkspacePicker() {
   }
 }
 
+function openCreateWorkspaceDialog() {
+  if (!workspacePickerRoot) return;
+  pendingWorkspaceParent = pendingWorkspacePath || workspacePickerRoot;
+  ensureCreateWorkspaceModal();
+  createWorkspaceParent.textContent = `Inside ${pendingWorkspaceParent}`;
+  createWorkspaceName.value = "";
+  createWorkspaceName.disabled = false;
+  createWorkspaceStatus.textContent = "";
+  confirmCreateWorkspaceButton.disabled = false;
+  createWorkspaceName.focus();
+}
+
+async function createAndSelectWorkspace() {
+  if (!pendingWorkspaceParent) return;
+  const name = createWorkspaceName.value.trim();
+  if (!name) {
+    createWorkspaceStatus.textContent = "Enter a folder name.";
+    createWorkspaceName.focus();
+    return;
+  }
+  confirmCreateWorkspaceButton.disabled = true;
+  createWorkspaceName.disabled = true;
+  createWorkspaceStatus.textContent = "Creating folder…";
+  try {
+    const result = await createWorkspaceFolder(pendingWorkspaceParent, name);
+    createWorkspaceDialog.close();
+    if (workspacePickerDialog.open) workspacePickerDialog.close();
+    await selectWorkspace(result.path);
+    appendLog("WORKSPACE", `Created ${result.path}`, { channel: "WORKSPACE", path: result.path, action: "created" });
+  } catch (error) {
+    createWorkspaceStatus.textContent = error.message;
+  } finally {
+    confirmCreateWorkspaceButton.disabled = false;
+    createWorkspaceName.disabled = false;
+    if (createWorkspaceDialog.open) createWorkspaceName.focus();
+  }
+}
+
 fileExplorer.addEventListener("refresh-workspace", refreshWorkspaceTree);
 fileExplorer.addEventListener("choose-workspace", openWorkspacePicker);
 fileExplorer.addEventListener("focus-prompt", () => promptInput.focus());
 workspacePickerModal.addEventListener("workspace-picker-parent", () => {
   if (workspacePickerParent) loadWorkspacePickerRoot(workspacePickerParent);
 });
+workspacePickerModal.addEventListener("create-workspace", openCreateWorkspaceDialog);
 workspacePickerModal.addEventListener("workspace-picker-confirm", async () => {
   if (!pendingWorkspacePath) return;
   workspacePickerDialog.close();
   await selectWorkspace(pendingWorkspacePath);
 });
+createWorkspaceModal.addEventListener("create-workspace-confirm", createAndSelectWorkspace);
 fileEditorModal.addEventListener("save-workspace-file", persistWorkspaceFile);
 
 const setExplorerVisible = (visible) => {
@@ -2387,7 +2329,6 @@ const handleSocketMessage = (payload) => {
   if (payload.type === "ready") {
     modelEngine.setModel(payload.model);
     runModelValue.textContent = payload.model || "—";
-    syncWorkflowSynthDisplay();
     appendLog("READY", `${payload.provider} · ${payload.model}`, payload);
     return;
   }
@@ -2400,7 +2341,6 @@ const handleSocketMessage = (payload) => {
     }, modelSettings);
     modelEngine.setModel(payload.model);
     runModelValue.textContent = payload.model || "—";
-    syncWorkflowSynthDisplay();
     appendLog("MODEL", payload.model || "Model updated", payload);
     return;
   }

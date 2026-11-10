@@ -5,6 +5,7 @@ import { mcpBlocks, quoteToml, setToolBlockEnabled } from "../public/lib/mcp-con
 import { defaultProviderSettings, normalizeToolPermissions } from "../public/lib/settings.js";
 import { promptHistoryFromSessions, titleFromPrompt } from "../public/lib/sessions.js";
 import { jsonOptions, requestJson } from "../public/services/api-client.js";
+import { createWorkspaceFolder } from "../public/services/workspace-api.js";
 
 test("browser settings helpers provide normalized defaults", () => {
   assert.equal(defaultProviderSettings().provider, "openai");
@@ -34,6 +35,20 @@ test("browser API helpers serialize JSON and normalize API errors", async () => 
   });
   try {
     await assert.rejects(requestJson("/api/test"), /Not allowed/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("workspace API creates a folder under the selected workspace", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, "/api/workspace-folder");
+    assert.deepEqual(options, jsonOptions("POST", { parent: "/workspace", name: "new-project" }));
+    return { ok: true, async json() { return { ok: true, path: "/workspace/new-project" }; } };
+  };
+  try {
+    assert.equal((await createWorkspaceFolder("/workspace", "new-project")).path, "/workspace/new-project");
   } finally {
     globalThis.fetch = originalFetch;
   }

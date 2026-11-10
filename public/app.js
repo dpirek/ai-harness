@@ -10,6 +10,7 @@ import {
   defaultProviderSettings,
   normalizeToolPermissions,
 } from "./lib/settings.js";
+import { normalizeRigComponentState } from "./lib/rig-presets.js";
 import { CONFIG_TEMPLATES, mcpBlocks, quoteToml, setToolBlockEnabled } from "./lib/mcp-config.js";
 import { appendEvent, describeAgentEvent, renderEventList } from "./lib/event-rendering.js";
 import { readFileAsDataUrl, renderImagePreviews as renderImagePreviewList } from "./lib/image-attachments.js";
@@ -17,6 +18,7 @@ import { createSession, promptHistoryFromSessions, titleFromPrompt } from "./lib
 import { renderWorkspaceNodes, renderWorkspacePicker } from "./lib/workspace-rendering.js";
 import { loadUiState, saveUiState } from "./services/ui-state-api.js";
 import {
+  createWorkspaceFolder,
   loadWorkspaceFile,
   loadWorkspaceTree as fetchWorkspaceTree,
   saveWorkspaceFile,
@@ -25,9 +27,11 @@ import {
   loadConfig as fetchConfig,
   loadHealth as fetchHealth,
   loadProviderModels as fetchProviderModels,
+  loadRigConfigurations as fetchRigConfigurations,
   loadSkills as fetchSkills,
   loadSystemPrompts as fetchSystemPrompts,
   saveConfig as persistConfig,
+  saveRigConfigurations as persistRigConfigurations,
   saveSelectedSkills as persistSelectedSkills,
   saveSystemPrompt as persistSystemPrompt,
 } from "./services/settings-api.js";
@@ -39,8 +43,10 @@ const chatComponent = document.querySelector("harness-chat");
 const workspaceComponent = document.querySelector("workspace-panel");
 const streamComponent = document.querySelector("stream-panel");
 const workspacePickerModal = document.querySelector("workspace-picker-modal");
+const createWorkspaceModal = document.querySelector("create-workspace-modal");
 const fileEditorModal = document.querySelector("file-editor-modal");
 const providersModal = document.querySelector("providers-modal");
+const presetsModal = document.querySelector("presets-modal");
 const systemPromptsModal = document.querySelector("system-prompts-modal");
 const skillsModal = document.querySelector("skills-modal");
 const toolsModal = document.querySelector("tools-modal");
@@ -57,6 +63,34 @@ const imagePreviewList = document.querySelector("#imagePreviewList");
 const emptyState = document.querySelector("#emptyState");
 const recentsList = document.querySelector("#recentsList");
 const settingsDialog = document.querySelector("#settingsDialog");
+const presetsDialog = document.querySelector("#presetsDialog");
+const presetsList = document.querySelector("#presetsList");
+const presetsCount = document.querySelector("#presetsCount");
+const presetsStatus = document.querySelector("#presetsStatus");
+const createPresetButton = document.querySelector("#createPresetButton");
+const presetsListView = document.querySelector("#presetsListView");
+const presetEditorForm = document.querySelector("#presetEditorForm");
+const presetsDialogTitle = document.querySelector("#presetsDialogTitle");
+const presetsDialogDescription = document.querySelector("#presetsDialogDescription");
+const backToPresetsButton = document.querySelector("#backToPresetsButton");
+const presetEditorName = document.querySelector("#presetEditorName");
+const presetEditorProvider = document.querySelector("#presetEditorProvider");
+const presetEditorModel = document.querySelector("#presetEditorModel");
+const presetEditorBaseUrl = document.querySelector("#presetEditorBaseUrl");
+const presetEditorApiKey = document.querySelector("#presetEditorApiKey");
+const presetEditorInputSource = document.querySelector("#presetEditorInputSource");
+const presetSystemPrompts = document.querySelector("#presetSystemPrompts");
+const presetMcpServerList = document.querySelector("#presetMcpServerList");
+const presetMcpType = document.querySelector("#presetMcpType");
+const presetMcpLabel = document.querySelector("#presetMcpLabel");
+const presetMcpUrlField = document.querySelector("#presetMcpUrlField");
+const presetMcpUrl = document.querySelector("#presetMcpUrl");
+const presetMcpCommand = document.querySelector("#presetMcpCommand");
+const presetMcpArgs = document.querySelector("#presetMcpArgs");
+const presetMcpCwd = document.querySelector("#presetMcpCwd");
+const presetMcpStdioFields = [...document.querySelectorAll(".presetMcpStdioField")];
+const presetMcpStatus = document.querySelector("#presetMcpStatus");
+const savePresetEditButton = document.querySelector("#savePresetEditButton");
 const systemPromptsDialog = document.querySelector("#systemPromptsDialog");
 const skillsDialog = document.querySelector("#skillsDialog");
 const systemPromptsList = document.querySelector("#systemPromptsList");
@@ -109,6 +143,12 @@ const filesResizeHandle = document.querySelector("#filesResizeHandle");
 const workspaceTreeElement = document.querySelector("#workspaceTree");
 const filesWorkspaceLabel = document.querySelector("#filesWorkspaceLabel");
 const selectWorkspaceRootButton = document.querySelector("#selectWorkspaceRootButton");
+const createWorkspaceButton = document.querySelector("#createWorkspaceButton");
+const createWorkspaceDialog = document.querySelector("#createWorkspaceDialog");
+const createWorkspaceParent = document.querySelector("#createWorkspaceParent");
+const createWorkspaceName = document.querySelector("#createWorkspaceName");
+const createWorkspaceStatus = document.querySelector("#createWorkspaceStatus");
+const confirmCreateWorkspaceButton = document.querySelector("#confirmCreateWorkspaceButton");
 const workspacePickerDialog = document.querySelector("#workspacePickerDialog");
 const workspacePickerTree = document.querySelector("#workspacePickerTree");
 const workspacePickerPath = document.querySelector("#workspacePickerPath");
@@ -137,6 +177,7 @@ let workspaceBrowserNodes = [];
 let pendingWorkspacePath = null;
 let workspacePickerRoot = null;
 let workspacePickerParent = null;
+let pendingWorkspaceParent = null;
 let editingFilePath = null;
 
 function updateFileEditorPreview(filePath, content) {
@@ -259,10 +300,426 @@ let providerSettings = defaultProviderSettings();
 let providers = [];
 let editingProviderId = null;
 let storedToolPermissions = normalizeToolPermissions();
+let presetConfigurations = [];
+let activePresetId = null;
+let editingPresetId = null;
+let editingPresetMcpConfig = "";
+let presetMutationPending = false;
 let sidebarWidth = 344;
 let streamWidth = 360;
 let filesWidth = 300;
 let uiStateSaveQueue = Promise.resolve();
+
+function setPresetsStatus(message, state = "") {
+  presetsStatus.textContent = message;
+  presetsStatus.dataset.state = state;
+}
+
+function presetMeta(configuration) {
+  const settings = configuration.providerSettings || {};
+  const provider = settings.provider || "openai";
+  const model = settings.model || "default model";
+  const toolCount = Object.values(configuration.toolPermissions || {}).filter(Boolean).length;
+  return `${provider} · ${model} · ${toolCount} tools enabled`;
+}
+
+const PRESET_EFFECT_INPUTS = {
+  composer: "presetEffectComposer",
+  tools: "presetEffectTools",
+  mcp: "presetEffectMcp",
+  validation: "presetEffectValidation",
+};
+
+const PRESET_TOOL_INPUTS = {
+  list_files: "presetToolListFiles",
+  read_file: "presetToolReadFile",
+  write_file: "presetToolWriteFile",
+  search_files: "presetToolSearchFiles",
+  curl: "presetToolCurl",
+  run_command: "presetToolRunCommand",
+};
+
+const PRESET_PROMPT_TITLES = {
+  prompt_refinement: "Input composer refinement",
+  agent_instructions: "Agent instructions",
+  workspace_context: "Workspace context",
+  tool_contract: "Tool contract",
+  validation_reminder: "Validation reminder",
+};
+
+function setPresetEditorPending(pending) {
+  for (const control of presetEditorForm.querySelectorAll("input, select, textarea, button")) {
+    control.disabled = pending;
+  }
+  backToPresetsButton.disabled = pending;
+  savePresetEditButton.textContent = pending ? "Saving..." : "Save preset";
+}
+
+function renderPresetPromptEditors(prompts = {}) {
+  presetSystemPrompts.replaceChildren();
+  for (const [key, content] of Object.entries(prompts)) {
+    const label = document.createElement("label");
+    label.className = "presetPromptField";
+    const title = document.createElement("span");
+    title.textContent = PRESET_PROMPT_TITLES[key] || key.replaceAll("_", " ");
+    const textarea = document.createElement("textarea");
+    textarea.dataset.promptKey = key;
+    textarea.spellcheck = false;
+    textarea.value = content;
+    label.append(title, textarea);
+    presetSystemPrompts.append(label);
+  }
+}
+
+function setPresetMcpStatus(message, state = "") {
+  presetMcpStatus.textContent = message;
+  presetMcpStatus.dataset.state = state;
+}
+
+function renderPresetMcpTypeFields() {
+  const remote = presetMcpType.value === "remote";
+  presetMcpUrlField.hidden = !remote;
+  for (const field of presetMcpStdioFields) field.hidden = remote;
+}
+
+function renderPresetMcpServers() {
+  presetMcpServerList.replaceChildren();
+  const blocks = mcpBlocks(editingPresetMcpConfig);
+  if (blocks.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "presetMcpEmpty";
+    empty.textContent = "No MCP servers configured for this preset.";
+    presetMcpServerList.append(empty);
+    return;
+  }
+  for (const block of blocks) {
+    const row = document.createElement("article");
+    row.className = "presetMcpServerRow";
+    const identity = document.createElement("div");
+    const name = document.createElement("strong");
+    name.textContent = block.label;
+    const detail = document.createElement("small");
+    detail.textContent = `${block.type} · ${block.detail}`;
+    identity.append(name, detail);
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = `presetMcpServerToggle${block.enabled ? " enabled" : ""}`;
+    toggle.textContent = block.enabled ? "On" : "Off";
+    toggle.setAttribute("aria-pressed", String(block.enabled));
+    toggle.setAttribute("aria-label", `${block.enabled ? "Disable" : "Enable"} ${block.label}`);
+    toggle.addEventListener("click", () => {
+      if (presetMutationPending || runActive) return;
+      editingPresetMcpConfig = setToolBlockEnabled(editingPresetMcpConfig, block, !block.enabled);
+      renderPresetMcpServers();
+      setPresetMcpStatus(`${block.label} ${block.enabled ? "disabled" : "enabled"}. Save the preset to write this change to SQLite.`, "success");
+    });
+    row.append(identity, toggle);
+    presetMcpServerList.append(row);
+  }
+}
+
+function addPresetMcpServer() {
+  if (presetMutationPending || runActive) return;
+  const label = presetMcpLabel.value.trim();
+  if (!/^[A-Za-z0-9_-]+$/.test(label)) {
+    setPresetMcpStatus("Label may contain only letters, numbers, _ or -.", "error");
+    presetMcpLabel.focus();
+    return;
+  }
+  let snippet;
+  if (presetMcpType.value === "remote") {
+    const url = presetMcpUrl.value.trim();
+    if (!url) {
+      setPresetMcpStatus("Server URL is required.", "error");
+      presetMcpUrl.focus();
+      return;
+    }
+    snippet = `[[mcp.servers]]\nserver_label = "${quoteToml(label)}"\nserver_url = "${quoteToml(url)}"\nrequire_approval = "always"`;
+  } else {
+    const command = presetMcpCommand.value.trim();
+    if (!command) {
+      setPresetMcpStatus("Command is required.", "error");
+      presetMcpCommand.focus();
+      return;
+    }
+    const args = presetMcpArgs.value.split(/\s+/).filter(Boolean).map((arg) => `"${quoteToml(arg)}"`).join(", ");
+    const cwd = presetMcpCwd.value.trim();
+    snippet = `[mcp_servers.${label}]\ncommand = "${quoteToml(command)}"\nargs = [${args}]${cwd ? `\ncwd = "${quoteToml(cwd)}"` : ""}\nmessage_format = "content-length"`;
+  }
+  const prefix = editingPresetMcpConfig.trimEnd();
+  editingPresetMcpConfig = `${prefix}${prefix ? "\n\n" : ""}${snippet}\n`;
+  presetMcpLabel.value = "";
+  presetMcpUrl.value = "";
+  presetMcpCommand.value = "";
+  presetMcpArgs.value = "";
+  presetMcpCwd.value = "";
+  renderPresetMcpServers();
+  setPresetMcpStatus(`${label} added. Save the preset to write this change to SQLite.`, "success");
+}
+
+function openPresetEditor(configurationId) {
+  const configuration = presetConfigurations.find((preset) => preset.id === configurationId);
+  if (!configuration || presetMutationPending || runActive) return;
+  const provider = { ...defaultProviderSettings(), ...(configuration.providerSettings || {}) };
+  const component = normalizeRigComponentState(configuration.componentState);
+  const permissions = normalizeToolPermissions(configuration.toolPermissions);
+  editingPresetId = configuration.id;
+  presetEditorName.value = configuration.name;
+  presetEditorProvider.value = provider.provider;
+  presetEditorModel.value = provider.model;
+  presetEditorBaseUrl.value = provider.baseUrl;
+  presetEditorApiKey.value = provider.apiKey;
+  presetEditorInputSource.value = component.inputSource;
+  for (const [key, id] of Object.entries(PRESET_EFFECT_INPUTS)) {
+    document.querySelector(`#${id}`).checked = component.effects[key] !== false;
+  }
+  for (const [key, id] of Object.entries(PRESET_TOOL_INPUTS)) {
+    document.querySelector(`#${id}`).checked = permissions[key] === true;
+  }
+  renderPresetPromptEditors(configuration.systemPrompts || {});
+  editingPresetMcpConfig = configuration.mcpConfig || "";
+  presetMcpType.value = "remote";
+  renderPresetMcpTypeFields();
+  renderPresetMcpServers();
+  setPresetMcpStatus("Loaded from this preset's SQLite record.");
+  presetsListView.hidden = true;
+  presetEditorForm.hidden = false;
+  backToPresetsButton.hidden = false;
+  presetsDialog.classList.add("editor-open");
+  presetsDialogTitle.textContent = `Edit ${configuration.name}`;
+  presetsDialogDescription.textContent = "Configure the complete shared preset snapshot";
+  setPresetsStatus(configuration.id === activePresetId ? "Changes to this active preset apply immediately when saved." : "Editing an inactive preset will not change the current runtime.");
+  setPresetEditorPending(false);
+  presetEditorName.focus();
+  presetEditorName.select();
+}
+
+function closePresetEditor({ preserveStatus = false } = {}) {
+  editingPresetId = null;
+  editingPresetMcpConfig = "";
+  presetsListView.hidden = false;
+  presetEditorForm.hidden = true;
+  backToPresetsButton.hidden = true;
+  presetsDialog.classList.remove("editor-open");
+  presetsDialogTitle.textContent = "Presets";
+  presetsDialogDescription.textContent = "Manage shared provider, prompt, tool, MCP, and workflow configurations";
+  if (presetsDialog.open && !preserveStatus) setPresetsStatus("Presets are shared with the workflow interface.");
+}
+
+async function savePresetEdit() {
+  const index = presetConfigurations.findIndex((configuration) => configuration.id === editingPresetId);
+  if (index < 0 || presetMutationPending || runActive) return;
+  const current = presetConfigurations[index];
+  const systemPrompts = Object.fromEntries(
+    [...presetSystemPrompts.querySelectorAll("textarea[data-prompt-key]")]
+      .map((textarea) => [textarea.dataset.promptKey, textarea.value]),
+  );
+  const componentState = normalizeRigComponentState({
+    ...current.componentState,
+    inputSource: presetEditorInputSource.value,
+    effects: Object.fromEntries(Object.entries(PRESET_EFFECT_INPUTS).map(([key, id]) => [key, document.querySelector(`#${id}`).checked])),
+  });
+  const toolPermissions = normalizeToolPermissions(
+    Object.fromEntries(Object.entries(PRESET_TOOL_INPUTS).map(([key, id]) => [key, document.querySelector(`#${id}`).checked])),
+  );
+  const updated = {
+    ...current,
+    name: presetEditorName.value.trim() || `Preset ${index + 1}`,
+    providerSettings: {
+      provider: presetEditorProvider.value,
+      model: presetEditorModel.value.trim(),
+      baseUrl: presetEditorBaseUrl.value.trim(),
+      apiKey: presetEditorApiKey.value,
+    },
+    componentState,
+    toolPermissions,
+    systemPrompts,
+    mcpConfig: editingPresetMcpConfig,
+    updatedAt: Date.now(),
+  };
+  const configurations = presetConfigurations.map((configuration, configurationIndex) => configurationIndex === index ? updated : configuration);
+  setPresetEditorPending(true);
+  const saved = await savePresetConfigurations(configurations, activePresetId, {
+    syncRuntime: current.id === activePresetId,
+    successMessage: `${updated.name} updated.`,
+  });
+  setPresetEditorPending(false);
+  if (saved) {
+    addEvent("Preset updated", updated.name);
+    closePresetEditor({ preserveStatus: true });
+  }
+}
+
+function renderPresets() {
+  presetsList.replaceChildren();
+  presetsCount.textContent = `${presetConfigurations.length} preset${presetConfigurations.length === 1 ? "" : "s"}`;
+  createPresetButton.disabled = presetMutationPending || runActive || presetConfigurations.length === 0;
+
+  if (presetConfigurations.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "presetEmpty";
+    empty.textContent = "No presets are available.";
+    presetsList.append(empty);
+    return;
+  }
+
+  for (const configuration of presetConfigurations) {
+    const isActive = configuration.id === activePresetId;
+    const row = document.createElement("article");
+    row.className = `presetRow${isActive ? " active" : ""}`;
+
+    const identity = document.createElement("div");
+    identity.className = "presetIdentity";
+    const name = document.createElement("strong");
+    name.className = "presetName";
+    name.textContent = configuration.name;
+    const meta = document.createElement("span");
+    meta.className = "presetMeta";
+    meta.textContent = presetMeta(configuration);
+    identity.append(name, meta);
+
+    const actions = document.createElement("div");
+    actions.className = "presetActions";
+    const editButton = document.createElement("button");
+    editButton.type = "button";
+    editButton.textContent = "Edit";
+    editButton.disabled = presetMutationPending || runActive;
+    editButton.addEventListener("click", () => openPresetEditor(configuration.id));
+
+    if (isActive) {
+      const badge = document.createElement("span");
+      badge.className = "presetActiveBadge";
+      badge.textContent = "Active";
+      actions.append(badge);
+    } else {
+      const useButton = document.createElement("button");
+      useButton.type = "button";
+      useButton.textContent = "Use";
+      useButton.disabled = presetMutationPending || runActive;
+      useButton.addEventListener("click", () => activatePreset(configuration.id));
+      actions.append(useButton);
+    }
+
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "presetDeleteButton";
+    deleteButton.textContent = "Delete";
+    deleteButton.disabled = presetMutationPending || runActive || presetConfigurations.length <= 1;
+    deleteButton.addEventListener("click", () => deletePreset(configuration.id));
+    actions.prepend(editButton);
+    actions.append(deleteButton);
+    row.append(identity, actions);
+    presetsList.append(row);
+  }
+}
+
+async function syncPresetRuntimeState() {
+  const [state, config] = await Promise.all([loadUiState(), fetchConfig()]);
+  providerSettings = { ...defaultProviderSettings(), ...(state.providerSettings || {}) };
+  providers = Array.isArray(state.providers) ? state.providers : [];
+  editingProviderId = providers.find((provider) => provider.selected)?.id || null;
+  storedToolPermissions = normalizeToolPermissions(state.toolPermissions);
+  toolsConfigContent = config.content || "";
+  systemPrompts = [];
+  renderProviderSettings(providerSettings);
+  renderProvidersTable();
+  renderToolPermissions();
+  renderTools();
+  workspaceMeta.textContent = `${providerSettings.provider} · ${providerSettings.model || "default model"}`;
+  send({ type: "provider_settings", ...providerSettings });
+  send({ type: "tool_permissions", permissions: storedToolPermissions });
+  send({ type: "reload_tools" });
+}
+
+async function savePresetConfigurations(configurations, nextActivePresetId, { syncRuntime = false, successMessage } = {}) {
+  if (presetMutationPending || runActive) {
+    if (runActive) setPresetsStatus("Stop the active run before changing presets.", "error");
+    return false;
+  }
+  presetMutationPending = true;
+  renderPresets();
+  setPresetsStatus("Saving presets...");
+  try {
+    const payload = configurations.map((configuration) => ({
+      ...configuration,
+      selected: configuration.id === nextActivePresetId,
+    }));
+    const result = await persistRigConfigurations(payload, nextActivePresetId);
+    presetConfigurations = Array.isArray(result.configurations) ? result.configurations : payload;
+    activePresetId = result.activeConfigurationId || nextActivePresetId;
+    if (syncRuntime) await syncPresetRuntimeState();
+    setPresetsStatus(successMessage || "Presets saved.", "success");
+    return true;
+  } catch (error) {
+    setPresetsStatus(error.message, "error");
+    return false;
+  } finally {
+    presetMutationPending = false;
+    renderPresets();
+  }
+}
+
+async function loadPresets() {
+  closePresetEditor();
+  createPresetButton.disabled = true;
+  setPresetsStatus("Loading presets...");
+  try {
+    const result = await fetchRigConfigurations();
+    presetConfigurations = Array.isArray(result.configurations) ? result.configurations : [];
+    activePresetId = result.activeConfigurationId || presetConfigurations.find((configuration) => configuration.selected)?.id || null;
+    setPresetsStatus("Presets are shared with the workflow interface.");
+  } catch (error) {
+    presetConfigurations = [];
+    activePresetId = null;
+    setPresetsStatus(error.message, "error");
+  }
+  renderPresets();
+}
+
+async function activatePreset(configurationId) {
+  const configuration = presetConfigurations.find((preset) => preset.id === configurationId);
+  if (!configuration || configurationId === activePresetId) return;
+  const saved = await savePresetConfigurations(presetConfigurations, configurationId, {
+    syncRuntime: true,
+    successMessage: `${configuration.name} activated.`,
+  });
+  if (saved) addEvent("Preset selected", configuration.name);
+}
+
+async function duplicateActivePreset() {
+  const active = presetConfigurations.find((configuration) => configuration.id === activePresetId) || presetConfigurations[0];
+  if (!active) return;
+  const duplicate = {
+    ...structuredClone(active),
+    id: crypto.randomUUID(),
+    name: `Copy of ${active.name}`,
+    updatedAt: Date.now(),
+    selected: true,
+  };
+  const saved = await savePresetConfigurations(
+    [duplicate, ...presetConfigurations.map((configuration) => ({ ...configuration, selected: false }))],
+    duplicate.id,
+    { syncRuntime: true, successMessage: `${duplicate.name} created and activated.` },
+  );
+  if (saved) addEvent("Preset created", duplicate.name);
+}
+
+async function deletePreset(configurationId) {
+  const index = presetConfigurations.findIndex((configuration) => configuration.id === configurationId);
+  if (index < 0 || presetConfigurations.length <= 1) return;
+  const deleted = presetConfigurations[index];
+  if (!window.confirm(`Delete preset “${deleted.name}”?`)) return;
+  const configurations = presetConfigurations.filter((configuration) => configuration.id !== configurationId);
+  const deletingActive = configurationId === activePresetId;
+  const nextActivePresetId = deletingActive
+    ? configurations[Math.min(index, configurations.length - 1)]?.id || configurations[0]?.id
+    : activePresetId;
+  const saved = await savePresetConfigurations(configurations, nextActivePresetId, {
+    syncRuntime: deletingActive,
+    successMessage: `${deleted.name} deleted.`,
+  });
+  if (saved) addEvent("Preset deleted", deleted.name);
+}
 
 function persistUiState(state) {
   uiStateSaveQueue = uiStateSaveQueue
@@ -484,11 +941,13 @@ function chooseWorkspacePickerPath(path) {
 
 async function loadWorkspacePickerRoot(rootPath) {
   parentWorkspacePickerButton.disabled = true;
+  createWorkspaceButton.disabled = true;
   workspacePickerTree.innerHTML = '<p class="workspaceTreeStatus">Loading folders…</p>';
   const payload = await fetchWorkspaceTree(rootPath);
   workspacePickerRoot = payload.root;
   workspacePickerParent = payload.parent;
   parentWorkspacePickerButton.disabled = workspacePickerParent === workspacePickerRoot;
+  createWorkspaceButton.disabled = false;
   renderWorkspacePicker(workspacePickerTree, workspacePickerRoot, payload.tree || [], {
     onChoose: chooseWorkspacePickerPath,
     onConfirm: () => confirmWorkspacePickerButton.click(),
@@ -500,6 +959,45 @@ async function openWorkspacePicker() {
   if (!workspaceBrowserRoot) return;
   workspacePickerDialog.showModal();
   try { await loadWorkspacePickerRoot(workspaceBrowserRoot); } catch (error) { workspacePickerPath.textContent = error.message; }
+}
+
+function openCreateWorkspaceDialog() {
+  if (!workspacePickerRoot) return;
+  pendingWorkspaceParent = pendingWorkspacePath || workspacePickerRoot;
+  createWorkspaceParent.textContent = `Inside ${pendingWorkspaceParent}`;
+  createWorkspaceName.value = "";
+  createWorkspaceStatus.textContent = "";
+  confirmCreateWorkspaceButton.disabled = false;
+  createWorkspaceDialog.showModal();
+  createWorkspaceName.focus();
+}
+
+async function createAndSelectWorkspace() {
+  const parent = pendingWorkspaceParent;
+  if (!parent) return;
+  const name = createWorkspaceName.value.trim();
+  if (!name) {
+    createWorkspaceStatus.textContent = "Enter a folder name.";
+    createWorkspaceName.focus();
+    return;
+  }
+  confirmCreateWorkspaceButton.disabled = true;
+  createWorkspaceName.disabled = true;
+  createWorkspaceStatus.textContent = "Creating folder…";
+  try {
+    const result = await createWorkspaceFolder(parent, name);
+    workspaceInput.value = result.path;
+    createWorkspaceDialog.close();
+    if (workspacePickerDialog.open) workspacePickerDialog.close();
+    saveActiveWorkspace();
+    addEvent("Workspace created", result.path);
+  } catch (error) {
+    createWorkspaceStatus.textContent = error.message;
+  } finally {
+    confirmCreateWorkspaceButton.disabled = false;
+    createWorkspaceName.disabled = false;
+    if (createWorkspaceDialog.open) createWorkspaceName.focus();
+  }
 }
 
 function saveSessions() {
@@ -1358,6 +1856,8 @@ workspaceComponent.addEventListener("workspace-change", saveActiveWorkspace);
 workspaceComponent.addEventListener("focus-prompt", () => promptInput.focus());
 workspaceComponent.addEventListener("refresh-workspace", loadWorkspaceTree);
 workspaceComponent.addEventListener("choose-workspace", openWorkspacePicker);
+workspacePickerModal.addEventListener("create-workspace", openCreateWorkspaceDialog);
+createWorkspaceModal.addEventListener("create-workspace-confirm", createAndSelectWorkspace);
 chatComponent.addEventListener("images-selected", async (event) => addImages(event.detail.files));
 chatComponent.addEventListener("prompt-edited", resetPromptHistoryCursor);
 chatComponent.addEventListener("navigate-prompt-history", (event) => navigatePromptHistory(event.detail.direction));
@@ -1405,6 +1905,10 @@ sidebarComponent.addEventListener("open-modal", async (event) => {
     settingsStatus.textContent = "Provider settings are stored in SQLite."; settingsStatus.dataset.state = "";
     settingsDialog.showModal();
   }
+  if (event.detail.modal === "presets") {
+    presetsDialog.showModal();
+    await loadPresets();
+  }
   if (event.detail.modal === "system-prompts") {
     systemPromptEditor.hidden = true; systemPromptsList.hidden = false; saveSystemPromptButton.hidden = true;
     systemPromptsDialog.showModal();
@@ -1445,6 +1949,11 @@ mcpModal.addEventListener("show-mcp-editor", () => {
 });
 providersModal.addEventListener("save-provider-settings", saveProviderSettings);
 toolsModal.addEventListener("save-tool-permissions", saveToolPermissions);
+presetsModal.addEventListener("create-preset", duplicateActivePreset);
+presetsModal.addEventListener("cancel-preset-edit", closePresetEditor);
+presetsModal.addEventListener("save-preset-edit", savePresetEdit);
+presetsModal.addEventListener("preset-mcp-type-change", renderPresetMcpTypeFields);
+presetsModal.addEventListener("add-preset-mcp-server", addPresetMcpServer);
 mcpModal.addEventListener("add-mcp-tool", addTool);
 mcpModal.addEventListener("mcp-type-change", renderToolTypeFields);
 providersModal.addEventListener("provider-type-change", async () => {

@@ -1,7 +1,9 @@
 import BaseComponent from "./base-component.js";
 import "./modals/workspace-picker-modal.js";
+import "./modals/create-workspace-modal.js";
 import "./modals/file-editor-modal.js";
 import "./modals/providers-modal.js";
+import "./modals/presets-modal.js";
 import "./modals/system-prompts-modal.js";
 import "./modals/skills-modal.js";
 import "./modals/tools-modal.js";
@@ -25,8 +27,10 @@ class AppShellContent extends BaseComponent {
       element("column-resize-handle", { id: "streamResizeHandle", class: "columnResizeHandle streamResizeHandle", label: "Resize stream column" }),
       element("stream-panel", { class: "streamColumn" }),
       element("workspace-picker-modal"),
+      element("create-workspace-modal"),
       element("file-editor-modal"),
       element("providers-modal"),
+      element("presets-modal"),
       element("system-prompts-modal"),
       element("skills-modal"),
       element("tools-modal"),
